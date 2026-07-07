@@ -1,141 +1,141 @@
-# Инструкции для всех репозиториев
+﻿# РРЅСЃС‚СЂСѓРєС†РёРё РґР»СЏ РІСЃРµС… СЂРµРїРѕР·РёС‚РѕСЂРёРµРІ
 
-> Slim-ядро: триггеры + правила. Детали → `memory/protocol-*.md`, `.claude/rules/`, `.claude/skills/`.
-> Синхронизация: `scripts/template-sync.sh` · Агент-специфичные инструкции: Hermes → Aisystant MCP `get_instructions`.
+> Slim-СЏРґСЂРѕ: С‚СЂРёРіРіРµСЂС‹ + РїСЂР°РІРёР»Р°. Р”РµС‚Р°Р»Рё в†’ `memory/protocol-*.md`, `.claude/rules/`, `.claude/skills/`.
+> РЎРёРЅС…СЂРѕРЅРёР·Р°С†РёСЏ: `scripts/template-sync.sh` В· РђРіРµРЅС‚-СЃРїРµС†РёС„РёС‡РЅС‹Рµ РёРЅСЃС‚СЂСѓРєС†РёРё: Hermes в†’ Aisystant MCP `get_instructions`.
 
-## 1. Архитектура репозиториев
+## 1. РђСЂС…РёС‚РµРєС‚СѓСЂР° СЂРµРїРѕР·РёС‚РѕСЂРёРµРІ
 
-| Тип | Что содержит | Первоисточник |
+| РўРёРї | Р§С‚Рѕ СЃРѕРґРµСЂР¶РёС‚ | РџРµСЂРІРѕРёСЃС‚РѕС‡РЅРёРє |
 |-----|-------------|---------------|
-| **Base** (Принципы + Форматы) | ZP, FPF, SPF, FMT-* | Да (платформа) |
-| **Pack** | Паспорт предметной области | Да (пользователь) |
-| **DS** (instrument/governance/surface) | Код, планы, курсы | Нет (производное от Pack) |
+| **Base** (РџСЂРёРЅС†РёРїС‹ + Р¤РѕСЂРјР°С‚С‹) | ZP, FPF, SPF, FMT-* | Р”Р° (РїР»Р°С‚С„РѕСЂРјР°) |
+| **Pack** | РџР°СЃРїРѕСЂС‚ РїСЂРµРґРјРµС‚РЅРѕР№ РѕР±Р»Р°СЃС‚Рё | Р”Р° (РїРѕР»СЊР·РѕРІР°С‚РµР»СЊ) |
+| **DS** (instrument/governance/surface) | РљРѕРґ, РїР»Р°РЅС‹, РєСѓСЂСЃС‹ | РќРµС‚ (РїСЂРѕРёР·РІРѕРґРЅРѕРµ РѕС‚ Pack) |
 
-**Fallback Chain:** DS → Pack → Base (SPF → FPF → ZP). **Pack = source-of-truth доменного знания.**
-**Лестница принципов (уровень специфичности):** ZPF → FPF → SPF → TPF → LPF
-где: ZPF/FPF/SPF-методология → Base · SPF-инстанс → Pack · TPF → DS + операционный слой агента · LPF → партикулярные практики роли (тест: без носителя данной роли — бессмысленны); детали → `memory/repo-type-rules.md`
-**Pack Creation Gate:** хочешь Pack → `/pack-new`. Имя = существительное-домен.
-Детали типов: → `memory/repo-type-rules.md`
+**Fallback Chain:** DS в†’ Pack в†’ Base (SPF в†’ FPF в†’ ZP). **Pack = source-of-truth РґРѕРјРµРЅРЅРѕРіРѕ Р·РЅР°РЅРёСЏ.**
+**Р›РµСЃС‚РЅРёС†Р° РїСЂРёРЅС†РёРїРѕРІ (СѓСЂРѕРІРµРЅСЊ СЃРїРµС†РёС„РёС‡РЅРѕСЃС‚Рё):** ZPF в†’ FPF в†’ SPF в†’ TPF в†’ LPF
+РіРґРµ: ZPF/FPF/SPF-РјРµС‚РѕРґРѕР»РѕРіРёСЏ в†’ Base В· SPF-РёРЅСЃС‚Р°РЅСЃ в†’ Pack В· TPF в†’ DS + РѕРїРµСЂР°С†РёРѕРЅРЅС‹Р№ СЃР»РѕР№ Р°РіРµРЅС‚Р° В· LPF в†’ РїР°СЂС‚РёРєСѓР»СЏСЂРЅС‹Рµ РїСЂР°РєС‚РёРєРё СЂРѕР»Рё (С‚РµСЃС‚: Р±РµР· РЅРѕСЃРёС‚РµР»СЏ РґР°РЅРЅРѕР№ СЂРѕР»Рё вЂ” Р±РµСЃСЃРјС‹СЃР»РµРЅРЅС‹); РґРµС‚Р°Р»Рё в†’ `memory/repo-type-rules.md`
+**Pack Creation Gate:** С…РѕС‡РµС€СЊ Pack в†’ `/pack-new`. РРјСЏ = СЃСѓС‰РµСЃС‚РІРёС‚РµР»СЊРЅРѕРµ-РґРѕРјРµРЅ.
+Р”РµС‚Р°Р»Рё С‚РёРїРѕРІ: в†’ `memory/repo-type-rules.md`
 
-## 2. ОРЗ-фрактал (Открытие → Работа → Закрытие)
+## 2. РћР Р—-С„СЂР°РєС‚Р°Р» (РћС‚РєСЂС‹С‚РёРµ в†’ Р Р°Р±РѕС‚Р° в†’ Р—Р°РєСЂС‹С‚РёРµ)
 
-| Масштаб | Открытие | Работа | Закрытие |
+| РњР°СЃС€С‚Р°Р± | РћС‚РєСЂС‹С‚РёРµ | Р Р°Р±РѕС‚Р° | Р—Р°РєСЂС‹С‚РёРµ |
 |---------|----------|--------|----------|
-| **Сессия** | `protocol-open.md § Сессия` | `protocol-work.md` | `/run-protocol close` |
-| **День** | `/day-open` | Между Open и Close | `/run-protocol day-close` |
-| **Неделя** | — | — | `/run-protocol week-close` |
-| **Месяц** | — | — | `/month-close` |
+| **РЎРµСЃСЃРёСЏ** | `protocol-open.md В§ РЎРµСЃСЃРёСЏ` | `protocol-work.md` | `/run-protocol close` |
+| **Р”РµРЅСЊ** | `/day-open` | РњРµР¶РґСѓ Open Рё Close | `/run-protocol day-close` |
+| **РќРµРґРµР»СЏ** | вЂ” | вЂ” | `/run-protocol week-close` |
+| **РњРµСЃСЏС†** | вЂ” | вЂ” | `/month-close` |
 
-### Блокирующие правила
+### Р‘Р»РѕРєРёСЂСѓСЋС‰РёРµ РїСЂР°РІРёР»Р°
 
-> Source-of-truth: `PACK-agent-rules/rules/AR.NNN.md`. Структурные (1-5) > поведенческих (6-10).
+> Source-of-truth: `PACK-agent-rules/rules/AR.NNN.md`. РЎС‚СЂСѓРєС‚СѓСЂРЅС‹Рµ (1-5) > РїРѕРІРµРґРµРЅС‡РµСЃРєРёС… (6-10).
 
-1. **WP Gate:** ЛЮБОЕ задание → протокол Открытия → ДО начала работы. Новый РП: объявить (Роль пользователя · Роль Claude · Работа · РП · ТВС · Класс верификации · Метод · ~Xh · Модель) → ждать «да». Шаги 3-4 → `memory/protocol-open.md`.
-2. **Push:** «заливай/запуши/закрывай» → commit+push без вопросов. При Close: `git status` по ВСЕМ репо → незафиксированное → commit+push ДО следующего шага.
-3. **Close:** Триггер Закрытия → протокол Закрытия → выполнить.
-4. **Pull-on-Touch:** `git pull --rebase` при ПЕРВОМ обращении к репо за сессию (lazy, один раз). Конфликт → вариант А: stash + «potentially stale». Сетевой fail → potentially stale.
-5. **Чеклист-верификация:** Quick/Day Close → sub-agent Haiku R23. Исключение: сессия ≤15 мин или без изменений файлов.
-6. **Hooks/Scripts Bypass Gate (БЛОКИРУЮЩЕЕ):** НЕ менять `.claude/hooks/`, `.claude/scripts/`, `.iwe-runtime/`, `FMT-exocortex-template/` без явного разрешения. Хук заблокировал → (1) НЕ обходить (2) записать в `inbox/bugs/bug-YYYY-MM-DD-<тема>.md` (3) сообщить пилоту (4) ждать инструкций.
-7. **Автономность:** НЕ спрашивать «добавить/продолжить/записать?». Задание → выполни → отчитайся. Исключения: необратимое действие · WP Gate Ритуал · Choice-question («X или Y?»).
-8. **Напоминания:** «напомни через X» → `send_telegram_message` (schedule_at) + ScheduleWakeup.
-9. **Финиш > отлог:** новая задача → делаю сейчас. Исключения: бюджет ×2-×3 · требует ArchGate · контекст переключился. Если >15 мин + новый артефакт → WP Gate.
+1. **WP Gate:** Р›Р®Р‘РћР• Р·Р°РґР°РЅРёРµ в†’ РїСЂРѕС‚РѕРєРѕР» РћС‚РєСЂС‹С‚РёСЏ в†’ Р”Рћ РЅР°С‡Р°Р»Р° СЂР°Р±РѕС‚С‹. РќРѕРІС‹Р№ Р Рџ: РѕР±СЉСЏРІРёС‚СЊ (Р РѕР»СЊ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ В· Р РѕР»СЊ Claude В· Р Р°Р±РѕС‚Р° В· Р Рџ В· РўР’РЎ В· РљР»Р°СЃСЃ РІРµСЂРёС„РёРєР°С†РёРё В· РњРµС‚РѕРґ В· ~Xh В· РњРѕРґРµР»СЊ) в†’ Р¶РґР°С‚СЊ В«РґР°В». РЁР°РіРё 3-4 в†’ `memory/protocol-open.md`.
+2. **Push:** В«Р·Р°Р»РёРІР°Р№/Р·Р°РїСѓС€Рё/Р·Р°РєСЂС‹РІР°Р№В» в†’ commit+push Р±РµР· РІРѕРїСЂРѕСЃРѕРІ. РџСЂРё Close: `git status` РїРѕ Р’РЎР•Рњ СЂРµРїРѕ в†’ РЅРµР·Р°С„РёРєСЃРёСЂРѕРІР°РЅРЅРѕРµ в†’ commit+push Р”Рћ СЃР»РµРґСѓСЋС‰РµРіРѕ С€Р°РіР°.
+3. **Close:** РўСЂРёРіРіРµСЂ Р—Р°РєСЂС‹С‚РёСЏ в†’ РїСЂРѕС‚РѕРєРѕР» Р—Р°РєСЂС‹С‚РёСЏ в†’ РІС‹РїРѕР»РЅРёС‚СЊ.
+4. **Pull-on-Touch:** `git pull --rebase` РїСЂРё РџР•Р Р’РћРњ РѕР±СЂР°С‰РµРЅРёРё Рє СЂРµРїРѕ Р·Р° СЃРµСЃСЃРёСЋ (lazy, РѕРґРёРЅ СЂР°Р·). РљРѕРЅС„Р»РёРєС‚ в†’ РІР°СЂРёР°РЅС‚ Рђ: stash + В«potentially staleВ». РЎРµС‚РµРІРѕР№ fail в†’ potentially stale.
+5. **Р§РµРєР»РёСЃС‚-РІРµСЂРёС„РёРєР°С†РёСЏ:** Quick/Day Close в†’ sub-agent Haiku R23. РСЃРєР»СЋС‡РµРЅРёРµ: СЃРµСЃСЃРёСЏ в‰¤15 РјРёРЅ РёР»Рё Р±РµР· РёР·РјРµРЅРµРЅРёР№ С„Р°Р№Р»РѕРІ.
+6. **Hooks/Scripts Bypass Gate (Р‘Р›РћРљРР РЈР®Р©Р•Р•):** РќР• РјРµРЅСЏС‚СЊ `.claude/hooks/`, `.claude/scripts/`, `.iwe-runtime/`, `FMT-exocortex-template/` Р±РµР· СЏРІРЅРѕРіРѕ СЂР°Р·СЂРµС€РµРЅРёСЏ. РҐСѓРє Р·Р°Р±Р»РѕРєРёСЂРѕРІР°Р» в†’ (1) РќР• РѕР±С…РѕРґРёС‚СЊ (2) Р·Р°РїРёСЃР°С‚СЊ РІ `inbox/bugs/bug-YYYY-MM-DD-<С‚РµРјР°>.md` (3) СЃРѕРѕР±С‰РёС‚СЊ РїРёР»РѕС‚Сѓ (4) Р¶РґР°С‚СЊ РёРЅСЃС‚СЂСѓРєС†РёР№.
+7. **РђРІС‚РѕРЅРѕРјРЅРѕСЃС‚СЊ:** РќР• СЃРїСЂР°С€РёРІР°С‚СЊ В«РґРѕР±Р°РІРёС‚СЊ/РїСЂРѕРґРѕР»Р¶РёС‚СЊ/Р·Р°РїРёСЃР°С‚СЊ?В». Р—Р°РґР°РЅРёРµ в†’ РІС‹РїРѕР»РЅРё в†’ РѕС‚С‡РёС‚Р°Р№СЃСЏ. РСЃРєР»СЋС‡РµРЅРёСЏ: РЅРµРѕР±СЂР°С‚РёРјРѕРµ РґРµР№СЃС‚РІРёРµ В· WP Gate Р РёС‚СѓР°Р» В· Choice-question (В«X РёР»Рё Y?В»).
+8. **РќР°РїРѕРјРёРЅР°РЅРёСЏ:** В«РЅР°РїРѕРјРЅРё С‡РµСЂРµР· XВ» в†’ `send_telegram_message` (schedule_at) + ScheduleWakeup.
+9. **Р¤РёРЅРёС€ > РѕС‚Р»РѕРі:** РЅРѕРІР°СЏ Р·Р°РґР°С‡Р° в†’ РґРµР»Р°СЋ СЃРµР№С‡Р°СЃ. РСЃРєР»СЋС‡РµРЅРёСЏ: Р±СЋРґР¶РµС‚ Г—2-Г—3 В· С‚СЂРµР±СѓРµС‚ ArchGate В· РєРѕРЅС‚РµРєСЃС‚ РїРµСЂРµРєР»СЋС‡РёР»СЃСЏ. Р•СЃР»Рё >15 РјРёРЅ + РЅРѕРІС‹Р№ Р°СЂС‚РµС„Р°РєС‚ в†’ WP Gate.
 
-### Протокол Работы → `memory/protocol-work.md`
+### РџСЂРѕС‚РѕРєРѕР» Р Р°Р±РѕС‚С‹ в†’ `memory/protocol-work.md`
 
-**Capture-to-Pack:** на рубеже — «Capture: [что] → [куда]». Routing Gate (DP.KR.001 §5) при создании артефакта.
+**Capture-to-Pack:** РЅР° СЂСѓР±РµР¶Рµ вЂ” В«Capture: [С‡С‚Рѕ] в†’ [РєСѓРґР°]В». Routing Gate (DP.KR.001 В§5) РїСЂРё СЃРѕР·РґР°РЅРёРё Р°СЂС‚РµС„Р°РєС‚Р°.
 
-| Pre-action Gate | Когда |
+| Pre-action Gate | РљРѕРіРґР° |
 |-----------------|-------|
-| Repo-Touch Gate | Первое действие в репо → читать `<repo>/CLAUDE.md` |
-| Routing Gate | Создание/размещение артефакта → DP.KR.001 §5 |
-| ArchGate | Архитектурное решение → `/archgate` |
-| Security Gate | РП затрагивает PII → §Б чеклист ArchGate ДО реализации |
-| IntegrationGate | Новый инструмент/агент/система → скилл `integration-gate` |
-| LegacyPortGate | Замена legacy → 15-мин субагент «как сейчас?» ДО решения |
+| Repo-Touch Gate | РџРµСЂРІРѕРµ РґРµР№СЃС‚РІРёРµ РІ СЂРµРїРѕ в†’ С‡РёС‚Р°С‚СЊ `<repo>/CLAUDE.md` |
+| Routing Gate | РЎРѕР·РґР°РЅРёРµ/СЂР°Р·РјРµС‰РµРЅРёРµ Р°СЂС‚РµС„Р°РєС‚Р° в†’ DP.KR.001 В§5 |
+| ArchGate | РђСЂС…РёС‚РµРєС‚СѓСЂРЅРѕРµ СЂРµС€РµРЅРёРµ в†’ `/archgate` |
+| Security Gate | Р Рџ Р·Р°С‚СЂР°РіРёРІР°РµС‚ PII в†’ В§Р‘ С‡РµРєР»РёСЃС‚ ArchGate Р”Рћ СЂРµР°Р»РёР·Р°С†РёРё |
+| IntegrationGate | РќРѕРІС‹Р№ РёРЅСЃС‚СЂСѓРјРµРЅС‚/Р°РіРµРЅС‚/СЃРёСЃС‚РµРјР° в†’ СЃРєРёР»Р» `integration-gate` |
+| LegacyPortGate | Р—Р°РјРµРЅР° legacy в†’ 15-РјРёРЅ СЃСѓР±Р°РіРµРЅС‚ В«РєР°Рє СЃРµР№С‡Р°СЃ?В» Р”Рћ СЂРµС€РµРЅРёСЏ |
 
-## 3. Описания методов (PROCESSES.md)
+## 3. РћРїРёСЃР°РЅРёСЏ РјРµС‚РѕРґРѕРІ (PROCESSES.md)
 
-≤15 мин — не нужен. Внутри системы — `<repo>/PROCESSES.md`.
+в‰¤15 РјРёРЅ вЂ” РЅРµ РЅСѓР¶РµРЅ. Р’РЅСѓС‚СЂРё СЃРёСЃС‚РµРјС‹ вЂ” `<repo>/PROCESSES.md`.
 
-## 4. Memory (Слой 3)
+## 4. Memory (РЎР»РѕР№ 3)
 
-| Ситуация | Читай |
+| РЎРёС‚СѓР°С†РёСЏ | Р§РёС‚Р°Р№ |
 |----------|-------|
-| Файлы/репо | `memory/navigation.md` |
-| Pack-репо | `memory/repo-type-rules.md` |
-| Терминология | `memory/hard-distinctions.md` |
-| FPF/SOTA/Роли | `memory/fpf-reference.md`, `memory/sota-reference.md`, `memory/roles.md` |
+| Р¤Р°Р№Р»С‹/СЂРµРїРѕ | `memory/navigation.md` |
+| Pack-СЂРµРїРѕ | `memory/repo-type-rules.md` |
+| РўРµСЂРјРёРЅРѕР»РѕРіРёСЏ | `memory/hard-distinctions.md` |
+| FPF/SOTA/Р РѕР»Рё | `memory/fpf-reference.md`, `memory/sota-reference.md`, `memory/roles.md` |
 
-Политика: ≤15 HOT+WARM, суммарно ≤150 строк hot. CLAUDE.md = ядро (цель ≤150). `memory/` = симлинк auto-memory.
+РџРѕР»РёС‚РёРєР°: в‰¤15 HOT+WARM, СЃСѓРјРјР°СЂРЅРѕ в‰¤150 СЃС‚СЂРѕРє hot. CLAUDE.md = СЏРґСЂРѕ (С†РµР»СЊ в‰¤150). `memory/` = СЃРёРјР»РёРЅРє auto-memory.
 
-## 5. АрхГейт — ОБЯЗАТЕЛЬНАЯ оценка
+## 5. РђСЂС…Р“РµР№С‚ вЂ” РћР‘РЇР—РђРўР•Р›Р¬РќРђРЇ РѕС†РµРЅРєР°
 
-> **БЛОКИРУЮЩЕЕ.** Архитектурное решение → `/archgate` (скилл `archgate`): профиль ЭМОГССБ, conjunctive screening.
+> **Р‘Р›РћРљРР РЈР®Р©Р•Р•.** РђСЂС…РёС‚РµРєС‚СѓСЂРЅРѕРµ СЂРµС€РµРЅРёРµ в†’ `/archgate` (СЃРєРёР»Р» `archgate`): РїСЂРѕС„РёР»СЊ Р­РњРћР“РЎРЎР‘, conjunctive screening.
 
-## 6. Форматирование → `.claude/rules/formatting.md`
+## 6. Р¤РѕСЂРјР°С‚РёСЂРѕРІР°РЅРёРµ в†’ `.claude/rules/formatting.md`
 
-## Различения → `.claude/rules/distinctions.md`
+## Р Р°Р·Р»РёС‡РµРЅРёСЏ в†’ `.claude/rules/distinctions.md`
 
-## 7. Обновление этого файла
+## 7. РћР±РЅРѕРІР»РµРЅРёРµ СЌС‚РѕРіРѕ С„Р°Р№Р»Р°
 
-> **3 слоя:** L1 (§1-§7) = платформа. L2 (§8) = staging. L3 (§9) = авторское.
+> **3 СЃР»РѕСЏ:** L1 (В§1-В§7) = РїР»Р°С‚С„РѕСЂРјР°. L2 (В§8) = staging. L3 (В§9) = Р°РІС‚РѕСЂСЃРєРѕРµ.
 
-- Протоколы → `memory/protocol-*.md` · Правило (1-3 строки) → CLAUDE.md · Доменное → Pack
-- §8+§9 (staging/авторское) → скилл `author-mode`
+- РџСЂРѕС‚РѕРєРѕР»С‹ в†’ `memory/protocol-*.md` В· РџСЂР°РІРёР»Рѕ (1-3 СЃС‚СЂРѕРєРё) в†’ CLAUDE.md В· Р”РѕРјРµРЅРЅРѕРµ в†’ Pack
+- В§8+В§9 (staging/Р°РІС‚РѕСЂСЃРєРѕРµ) в†’ СЃРєРёР»Р» `author-mode`
 
 <!-- PLATFORM-END -->
 
 ---
 
-## Agent Core (единое ядро для всех агентов)
+## Agent Core (РµРґРёРЅРѕРµ СЏРґСЂРѕ РґР»СЏ РІСЃРµС… Р°РіРµРЅС‚РѕРІ)
 
-> WP-394 Ф4.2. Единое ядро для Claude, Kimi, Hermes. Правки — сюда.
+> WP-394 Р¤4.2. Р•РґРёРЅРѕРµ СЏРґСЂРѕ РґР»СЏ Claude, Kimi, Hermes. РџСЂР°РІРєРё вЂ” СЃСЋРґР°.
 
 <!-- SYNC-CORE-START -->
 
-## WP Gate — CRITICAL
+## WP Gate вЂ” CRITICAL
 
-**ЛЮБОЕ задание → протокол Открытия → ДО начала работы.** При создании нового РП: объявить роль, работу, РП, класс верификации, метод, оценку, модель. Дождаться согласования пилота.
+**Р›Р®Р‘РћР• Р·Р°РґР°РЅРёРµ в†’ РїСЂРѕС‚РѕРєРѕР» РћС‚РєСЂС‹С‚РёСЏ в†’ Р”Рћ РЅР°С‡Р°Р»Р° СЂР°Р±РѕС‚С‹.** РџСЂРё СЃРѕР·РґР°РЅРёРё РЅРѕРІРѕРіРѕ Р Рџ: РѕР±СЉСЏРІРёС‚СЊ СЂРѕР»СЊ, СЂР°Р±РѕС‚Сѓ, Р Рџ, РєР»Р°СЃСЃ РІРµСЂРёС„РёРєР°С†РёРё, РјРµС‚РѕРґ, РѕС†РµРЅРєСѓ, РјРѕРґРµР»СЊ. Р”РѕР¶РґР°С‚СЊСЃСЏ СЃРѕРіР»Р°СЃРѕРІР°РЅРёСЏ РїРёР»РѕС‚Р°.
 
-## Git Staging — CRITICAL
+## Git Staging вЂ” CRITICAL
 
 **NEVER use `git add -u`, `git add .`, or `git add -A`.** Picks up other agents' changes.
 
 **Always stage only specific files you edited:**
 ```bash
 git add path/to/specific-file.md   # correct
-# git add -u / git add . / git add -A  — FORBIDDEN
+# git add -u / git add . / git add -A  вЂ” FORBIDDEN
 ```
 
-**Before every commit:** `git diff --cached --name-only` → confirm all files belong to current WP/context. Unexpected files → `git restore --staged <file>`.
+**Before every commit:** `git diff --cached --name-only` в†’ confirm all files belong to current WP/context. Unexpected files в†’ `git restore --staged <file>`.
 
 ## Artifact Naming
-**Do not invent artifact names.** Names come from the plan/task. If silent on name — report "need clarification on name."
+**Do not invent artifact names.** Names come from the plan/task. If silent on name вЂ” report "need clarification on name."
 ## Drift Reporting
-Discrepancy found → **Report to pilot, do not silently fix.** "Found drift: [what] in [file]. Fix?" Fix only if instructed.
+Discrepancy found в†’ **Report to pilot, do not silently fix.** "Found drift: [what] in [file]. Fix?" Fix only if instructed.
 ## Working Directory
 `{{HOME_DIR}}/IWE/`
 ## Status Reporting
-Start: `agent_status_update(agent=claude-code, status=working, task=..., files=[...])`. Done: `status=idle`. Team repo: add `repo="org/repo-name"`. Fail-safe: Stop-хук → `scripts/agent-status-report.sh`.
-## WP-REGISTRY Naming — CRITICAL
-**Колонка «Название» = ТОЛЬКО имя артефакта ≤80 символов.** Запрещено: даты, SHA, метрики, статусы фаз, ссылки. Итог → `archive/wp-contexts/WP-NNN.md §Закрытие`. Статус фаз → frontmatter `inbox/WP-NNN.md`.
-## WP Context Scope — Umbrella РП
-`umbrella: true` + `agent_scope: open-only` → читать только `pending/in_progress/blocked`. Архивные — не читать без запроса. Применяется к: WP-5, WP-7.
-## Calendar Events — CRITICAL
-**Все события агента — ДО 09:00.** Создано после 09:00 → удалить + пересоздать + сообщить пилоту.
+Start: `agent_status_update(agent=claude-code, status=working, task=..., files=[...])`. Done: `status=idle`. Team repo: add `repo="org/repo-name"`. Fail-safe: Stop-С…СѓРє в†’ `scripts/agent-status-report.sh`.
+## WP-REGISTRY Naming вЂ” CRITICAL
+**РљРѕР»РѕРЅРєР° В«РќР°Р·РІР°РЅРёРµВ» = РўРћР›Р¬РљРћ РёРјСЏ Р°СЂС‚РµС„Р°РєС‚Р° в‰¤80 СЃРёРјРІРѕР»РѕРІ.** Р—Р°РїСЂРµС‰РµРЅРѕ: РґР°С‚С‹, SHA, РјРµС‚СЂРёРєРё, СЃС‚Р°С‚СѓСЃС‹ С„Р°Р·, СЃСЃС‹Р»РєРё. РС‚РѕРі в†’ `archive/wp-contexts/WP-NNN.md В§Р—Р°РєСЂС‹С‚РёРµ`. РЎС‚Р°С‚СѓСЃ С„Р°Р· в†’ frontmatter `inbox/WP-NNN.md`.
+## WP Context Scope вЂ” Umbrella Р Рџ
+`umbrella: true` + `agent_scope: open-only` в†’ С‡РёС‚Р°С‚СЊ С‚РѕР»СЊРєРѕ `pending/in_progress/blocked`. РђСЂС…РёРІРЅС‹Рµ вЂ” РЅРµ С‡РёС‚Р°С‚СЊ Р±РµР· Р·Р°РїСЂРѕСЃР°. РџСЂРёРјРµРЅСЏРµС‚СЃСЏ Рє: WP-5, WP-7.
+## Calendar Events вЂ” CRITICAL
+**Р’СЃРµ СЃРѕР±С‹С‚РёСЏ Р°РіРµРЅС‚Р° вЂ” Р”Рћ 09:00.** РЎРѕР·РґР°РЅРѕ РїРѕСЃР»Рµ 09:00 в†’ СѓРґР°Р»РёС‚СЊ + РїРµСЂРµСЃРѕР·РґР°С‚СЊ + СЃРѕРѕР±С‰РёС‚СЊ РїРёР»РѕС‚Сѓ.
 ## Language
 Respond in Russian unless the user writes in English.
-## Response Style — Pilot-Facing
-Применять A1-A11 (`memory/feedback_response_clarity_for_pilot.md`). Channel: технический (commit/PR + пилот пишет `grep`/`git`/SHA) vs «на пальцах» (остальной чат).
-## Code Style — Engineering (DP.SC.172)
-→ `engineering-code-style-base.md` (PACK-digital-platform). P0 форматтер+линтер; P1 тест без assert запрещён; P2 повторение×3 → функция; P3 мёртвую ветку удалять; P4 `except: pass` без лога запрещён.
+## Response Style вЂ” Pilot-Facing
+РџСЂРёРјРµРЅСЏС‚СЊ A1-A11 (`memory/feedback_response_clarity_for_pilot.md`). Channel: С‚РµС…РЅРёС‡РµСЃРєРёР№ (commit/PR + РїРёР»РѕС‚ РїРёС€РµС‚ `grep`/`git`/SHA) vs В«РЅР° РїР°Р»СЊС†Р°С…В» (РѕСЃС‚Р°Р»СЊРЅРѕР№ С‡Р°С‚).
+## Code Style вЂ” Engineering (DP.SC.172)
+в†’ `engineering-code-style-base.md` (PACK-digital-platform). P0 С„РѕСЂРјР°С‚С‚РµСЂ+Р»РёРЅС‚РµСЂ; P1 С‚РµСЃС‚ Р±РµР· assert Р·Р°РїСЂРµС‰С‘РЅ; P2 РїРѕРІС‚РѕСЂРµРЅРёРµГ—3 в†’ С„СѓРЅРєС†РёСЏ; P3 РјС‘СЂС‚РІСѓСЋ РІРµС‚РєСѓ СѓРґР°Р»СЏС‚СЊ; P4 `except: pass` Р±РµР· Р»РѕРіР° Р·Р°РїСЂРµС‰С‘РЅ.
 
 <!-- SYNC-CORE-END -->
 
 ---
 
-## 8–9. Staging + Авторское → скилл `author-mode`
+## 8вЂ“9. Staging + РђРІС‚РѕСЂСЃРєРѕРµ в†’ СЃРєРёР»Р» `author-mode`
 
-> Staging-канал (обкатка → FMT), Extensions Gate, авторские правила L3.
+> Staging-РєР°РЅР°Р» (РѕР±РєР°С‚РєР° в†’ FMT), Extensions Gate, Р°РІС‚РѕСЂСЃРєРёРµ РїСЂР°РІРёР»Р° L3.
 
-*Последнее обновление: 2026-06-26*
+*РџРѕСЃР»РµРґРЅРµРµ РѕР±РЅРѕРІР»РµРЅРёРµ: 2026-06-26*

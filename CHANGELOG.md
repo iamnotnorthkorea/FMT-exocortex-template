@@ -70,12 +70,50 @@ Versioning: [Semantic Versioning](https://semver.org/).
 
 
 
-## [Unreleased] — обновлено 2026-06-30
+
+
+
+
+## [Unreleased] — обновлено 2026-07-07
+
+### Added
+
+- `529e165` feat(wp-448-ф7): промоция TPF-рамки — 7 артефактов процессного слоя IWE
+- `77e856c` feat(wp-415): sync glossary from iwe-translation-engine (18/78/30 tiers)
+- `acf10e4` feat(wp-415): automate RU→EN translation sync with tier-based delivery tests
+- `d049e6c` feat(dev-guide): тестирование как спецификация (WP-452 Ф1)
+- `1d1d4fa` feat(wp-149): promote skill personal-guide-render v2.0.0 to platform (L1)
+
+### Changed
+
+- `b3ba993` refactor(translate): drop openai SDK dependency, call OpenRouter directly
+- `901103d` docs: python3 in maintaining-skills snippets
+- `c25790a` refactor(translate): switch provider to OpenRouter (reuse existing key, mirror enrich-glossary client)
+- `ffcea49` docs(contributing): раздел Promoting a Practice — синхронизация guide при промоции (WP-453 Ф1 §6)
 
 ### Fixed
 
+- `eb2e1fe` fix(WP-7/SP1): R15 (accept/reject/defer) — только живой пилот, не агент
+- `8562439` fix(translate): strip <body> markers unconditionally, detect output truncation
+- `791df86` fix(translate-sync): stop rsync --delete mirror from wiping en-draft
+- `702244e` fix(translate): exclude blank fill-in templates from auto-translate
+- `e8c6d2e` fix(translate-sync): push HEAD:en-draft for detached worktree, tolerate ASCII-guard warnings, add manual dispatch
+- `60e3591` fix(#226): CLAUDE.md conflict no longer aborts update.sh mid-delivery
+- `1f00b75` fix(#225,#224): create-wp.sh legacy WP-N regex + archive-done-wp.sh git mv -f
+- `93828f4` fix(ci): register .claude/templates/ in delivery contract
+- `53c9711` fix: cold-review findings on #217/#220 — sed & escaping, WP-N without bold
+- `4eb05e2` fix(#217): CLAUDE.md/AGENTS.md exocortex backup+restore is OS-agnostic
+- `c26c0ae` fix(#218): CI catches renamed paths missing from deprecated_files[]
+- `1d1a2d9` fix(#220): drift detector executes check:script + recognizes bold WP-id
+- `b21d412` fix(#197): setup.sh generates executor-catalog.yaml on install
+- `4458412` fix(#221): protocol-artifact-validate.sh accepts <summary> as section heading
+- `ef3d728` fix(#192): enforce jq as required prerequisite in setup.sh
+- `84858e4` fix(release): sync-version-badge.sh --fix broken on macOS BSD sed + README badge drift
+- `0b5e140` fix(extractor): guard против запуска сырого файла шаблона + правка примеров
 - `b4d08a2` fix(v0.35.5): orphan-detection TypeError + DS-strategy validator + root detection (#214 #215)
 - `212fa2f` fix(setup): include rules-lazy in dry-run and section message
+- `b7d75a8` fix(template): verify-template-integrity mirrors CI contract+smoke jobs
+- `0200a93` fix(template): close manifest drift + setup/update rules-lazy gap, wire parity gate
 
 
 ## [0.35.5] — 2026-06-30

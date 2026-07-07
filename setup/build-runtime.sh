@@ -1,30 +1,30 @@
 #!/bin/bash
-# build-runtime.sh — Generated runtime architecture (WP-273 Этап 2 Ф18)
+# build-runtime.sh вЂ” Generated runtime architecture (WP-273 Р­С‚Р°Рї 2 Р¤18)
 #
 # Idempotent rebuild $WORKSPACE_DIR/.iwe-runtime/ from FMT-exocortex-template + .exocortex.env.
-# Аналог Nix derivation: одни и те же входы → identical output.
+# РђРЅР°Р»РѕРі Nix derivation: РѕРґРЅРё Рё С‚Рµ Р¶Рµ РІС…РѕРґС‹ в†’ identical output.
 #
-# Source-of-truth: настоящий FMT (immutable, regenerable).
-# Output: $WORKSPACE_DIR/.iwe-runtime/ (regenerable, не в git).
-# Trigger: setup.sh, update.sh, ручной запуск.
+# Source-of-truth: РЅР°СЃС‚РѕСЏС‰РёР№ FMT (immutable, regenerable).
+# Output: $WORKSPACE_DIR/.iwe-runtime/ (regenerable, РЅРµ РІ git).
+# Trigger: setup.sh, update.sh, СЂСѓС‡РЅРѕР№ Р·Р°РїСѓСЃРє.
 #
 # Usage:
 #   bash build-runtime.sh                   # rebuild + write
-#   bash build-runtime.sh --dry-run         # показать что будет создано, без записи
-#   bash build-runtime.sh --diff            # diff между текущим runtime и тем, что был бы создан
-#   bash build-runtime.sh --workspace PATH  # явно указать workspace (default: parent of FMT)
-#   bash build-runtime.sh --env-file PATH   # явно указать .exocortex.env
-#   bash build-runtime.sh --quiet           # минимальный вывод (для setup/update.sh)
+#   bash build-runtime.sh --dry-run         # РїРѕРєР°Р·Р°С‚СЊ С‡С‚Рѕ Р±СѓРґРµС‚ СЃРѕР·РґР°РЅРѕ, Р±РµР· Р·Р°РїРёСЃРё
+#   bash build-runtime.sh --diff            # diff РјРµР¶РґСѓ С‚РµРєСѓС‰РёРј runtime Рё С‚РµРј, С‡С‚Рѕ Р±С‹Р» Р±С‹ СЃРѕР·РґР°РЅ
+#   bash build-runtime.sh --workspace PATH  # СЏРІРЅРѕ СѓРєР°Р·Р°С‚СЊ workspace (default: parent of FMT)
+#   bash build-runtime.sh --env-file PATH   # СЏРІРЅРѕ СѓРєР°Р·Р°С‚СЊ .exocortex.env
+#   bash build-runtime.sh --quiet           # РјРёРЅРёРјР°Р»СЊРЅС‹Р№ РІС‹РІРѕРґ (РґР»СЏ setup/update.sh)
 #
 # Exit codes:
-#   0 — успех (или dry-run/diff без блокеров)
-#   1 — некорректные аргументы
-#   2 — отсутствует .exocortex.env
-#   3 — overlay-реестр не найден
-#   4 — отсутствуют source-файлы из реестра
-#   5 — drift detected (только в --diff режиме при найденных расхождениях)
+#   0 вЂ” СѓСЃРїРµС… (РёР»Рё dry-run/diff Р±РµР· Р±Р»РѕРєРµСЂРѕРІ)
+#   1 вЂ” РЅРµРєРѕСЂСЂРµРєС‚РЅС‹Рµ Р°СЂРіСѓРјРµРЅС‚С‹
+#   2 вЂ” РѕС‚СЃСѓС‚СЃС‚РІСѓРµС‚ .exocortex.env
+#   3 вЂ” overlay-СЂРµРµСЃС‚СЂ РЅРµ РЅР°Р№РґРµРЅ
+#   4 вЂ” РѕС‚СЃСѓС‚СЃС‚РІСѓСЋС‚ source-С„Р°Р№Р»С‹ РёР· СЂРµРµСЃС‚СЂР°
+#   5 вЂ” drift detected (С‚РѕР»СЊРєРѕ РІ --diff СЂРµР¶РёРјРµ РїСЂРё РЅР°Р№РґРµРЅРЅС‹С… СЂР°СЃС…РѕР¶РґРµРЅРёСЏС…)
 #
-# WP-273 Этап 2 Ф18. ArchGate v2 → F (Generated runtime).
+# WP-273 Р­С‚Р°Рї 2 Р¤18. ArchGate v2 в†’ F (Generated runtime).
 
 set -eu
 
@@ -105,26 +105,26 @@ WORKSPACE_DIR="${WORKSPACE_DIR:-$DEFAULT_WORKSPACE}"
 WORKSPACE_DIR="${WORKSPACE_DIR/#\~/$HOME}"
 
 if [ -z "$ENV_FILE" ]; then
-    # Поиск .exocortex.env: workspace → template (для миграции с старой раскладки)
+    # РџРѕРёСЃРє .exocortex.env: workspace в†’ template (РґР»СЏ РјРёРіСЂР°С†РёРё СЃ СЃС‚Р°СЂРѕР№ СЂР°СЃРєР»Р°РґРєРё)
     if [ -f "$WORKSPACE_DIR/.exocortex.env" ]; then
         ENV_FILE="$WORKSPACE_DIR/.exocortex.env"
     elif [ -f "$TEMPLATE_DIR/.exocortex.env" ]; then
         ENV_FILE="$TEMPLATE_DIR/.exocortex.env"
-        $QUIET || echo "  ⚠ .exocortex.env найден в FMT (legacy location). Будет мигрирован в \$WORKSPACE_DIR/ при следующем setup."
+        $QUIET || echo "  вљ  .exocortex.env РЅР°Р№РґРµРЅ РІ FMT (legacy location). Р‘СѓРґРµС‚ РјРёРіСЂРёСЂРѕРІР°РЅ РІ \$WORKSPACE_DIR/ РїСЂРё СЃР»РµРґСѓСЋС‰РµРј setup."
     fi
 fi
 
 if [ -z "$ENV_FILE" ] || [ ! -f "$ENV_FILE" ]; then
-    echo "ERROR: .exocortex.env не найден. Искал:" >&2
+    echo "ERROR: .exocortex.env РЅРµ РЅР°Р№РґРµРЅ. РСЃРєР°Р»:" >&2
     echo "  - $WORKSPACE_DIR/.exocortex.env" >&2
     echo "  - $TEMPLATE_DIR/.exocortex.env" >&2
-    echo "Запустите setup.sh для первичной конфигурации." >&2
+    echo "Р—Р°РїСѓСЃС‚РёС‚Рµ setup.sh РґР»СЏ РїРµСЂРІРёС‡РЅРѕР№ РєРѕРЅС„РёРіСѓСЂР°С†РёРё." >&2
     exit 2
 fi
 
 OVERLAY_FILE="$TEMPLATE_DIR/.claude/runtime-overlay.yaml"
 if [ ! -f "$OVERLAY_FILE" ]; then
-    echo "ERROR: Overlay-реестр не найден: $OVERLAY_FILE" >&2
+    echo "ERROR: Overlay-СЂРµРµСЃС‚СЂ РЅРµ РЅР°Р№РґРµРЅ: $OVERLAY_FILE" >&2
     exit 3
 fi
 
@@ -142,15 +142,15 @@ if ! $QUIET; then
 fi
 
 # === Load .exocortex.env ===
-# Safe parse: только KEY=VALUE, никакого eval/source.
-# Bash 3.2-compatible: используем функцию env_get вместо associative array.
+# Safe parse: С‚РѕР»СЊРєРѕ KEY=VALUE, РЅРёРєР°РєРѕРіРѕ eval/source.
+# Bash 3.2-compatible: РёСЃРїРѕР»СЊР·СѓРµРј С„СѓРЅРєС†РёСЋ env_get РІРјРµСЃС‚Рѕ associative array.
 env_get() {
     grep "^$1=" "$ENV_FILE" 2>/dev/null | head -1 | cut -d'=' -f2-
 }
 
-# === Parse overlay-реестр ===
-# Минимальный YAML-парсер: читает списки substituted/copied_to_workspace.
-# Ожидаемый формат: ключ в начале строки + двоеточие, далее `  - path` для каждого файла.
+# === Parse overlay-СЂРµРµСЃС‚СЂ ===
+# РњРёРЅРёРјР°Р»СЊРЅС‹Р№ YAML-РїР°СЂСЃРµСЂ: С‡РёС‚Р°РµС‚ СЃРїРёСЃРєРё substituted/copied_to_workspace.
+# РћР¶РёРґР°РµРјС‹Р№ С„РѕСЂРјР°С‚: РєР»СЋС‡ РІ РЅР°С‡Р°Р»Рµ СЃС‚СЂРѕРєРё + РґРІРѕРµС‚РѕС‡РёРµ, РґР°Р»РµРµ `  - path` РґР»СЏ РєР°Р¶РґРѕРіРѕ С„Р°Р№Р»Р°.
 parse_list() {
     local section="$1"
     awk -v sect="$section" '
@@ -174,7 +174,7 @@ PLACEHOLDERS=()
 while IFS= read -r line; do PLACEHOLDERS+=("$line"); done < <(parse_list "placeholders")
 
 if [ "${#SUBSTITUTED_FILES[@]}" -eq 0 ] && [ "${#COPIED_FILES[@]}" -eq 0 ]; then
-    echo "ERROR: Overlay-реестр пуст или повреждён: $OVERLAY_FILE" >&2
+    echo "ERROR: Overlay-СЂРµРµСЃС‚СЂ РїСѓСЃС‚ РёР»Рё РїРѕРІСЂРµР¶РґС‘РЅ: $OVERLAY_FILE" >&2
     exit 3
 fi
 
@@ -185,9 +185,9 @@ for f in "${SUBSTITUTED_FILES[@]}" "${COPIED_FILES[@]}"; do
 done
 
 if [ "${#MISSING[@]}" -gt 0 ]; then
-    echo "ERROR: Файлы из overlay-реестра отсутствуют в FMT:" >&2
+    echo "ERROR: Р¤Р°Р№Р»С‹ РёР· overlay-СЂРµРµСЃС‚СЂР° РѕС‚СЃСѓС‚СЃС‚РІСѓСЋС‚ РІ FMT:" >&2
     printf '  - %s\n' "${MISSING[@]}" >&2
-    echo "Возможно: устаревший runtime-overlay.yaml или неполный clone." >&2
+    echo "Р’РѕР·РјРѕР¶РЅРѕ: СѓСЃС‚Р°СЂРµРІС€РёР№ runtime-overlay.yaml РёР»Рё РЅРµРїРѕР»РЅС‹Р№ clone." >&2
     exit 4
 fi
 
@@ -242,14 +242,14 @@ build_substituted_file() {
         sed_inplace "${sed_args[@]}" "$dst"
     fi
 
-    # Preserve executable bit (.sh files always get +x — git may track 100644 after updates)
+    # Preserve executable bit (.sh files always get +x вЂ” git may track 100644 after updates)
     if [ -x "$src" ] || [[ "$rel" == *.sh ]]; then
         chmod +x "$dst"
     fi
 
     # Verify no unsubstituted placeholders remain
     if grep -qE '\{\{[A-Z_]+\}\}' "$dst" 2>/dev/null; then
-        echo "  ⚠ $rel: остались незаменённые плейсхолдеры:" >&2
+        echo "  вљ  $rel: РѕСЃС‚Р°Р»РёСЃСЊ РЅРµР·Р°РјРµРЅС‘РЅРЅС‹Рµ РїР»РµР№СЃС…РѕР»РґРµСЂС‹:" >&2
         grep -oE '\{\{[A-Z_]+\}\}' "$dst" | sort -u | sed 's/^/      /' >&2
     fi
 }
@@ -285,9 +285,9 @@ done
 # === Diff mode ===
 if $DIFF_MODE; then
     if [ ! -d "$RUNTIME_DIR" ]; then
-        echo "[diff] $RUNTIME_DIR не существует — будет создан с нуля."
-        echo "  Substituted: ${#SUBSTITUTED_FILES[@]} файлов"
-        echo "  Copied to workspace: ${#COPIED_FILES[@]} файлов"
+        echo "[diff] $RUNTIME_DIR РЅРµ СЃСѓС‰РµСЃС‚РІСѓРµС‚ вЂ” Р±СѓРґРµС‚ СЃРѕР·РґР°РЅ СЃ РЅСѓР»СЏ."
+        echo "  Substituted: ${#SUBSTITUTED_FILES[@]} С„Р°Р№Р»РѕРІ"
+        echo "  Copied to workspace: ${#COPIED_FILES[@]} С„Р°Р№Р»РѕРІ"
         exit 0
     fi
 
@@ -310,45 +310,45 @@ if $DIFF_MODE; then
         exit 0
     else
         echo ""
-        echo "[diff] $DRIFT_COUNT файлов изменилось бы. Запустите без --diff для применения."
+        echo "[diff] $DRIFT_COUNT С„Р°Р№Р»РѕРІ РёР·РјРµРЅРёР»РѕСЃСЊ Р±С‹. Р—Р°РїСѓСЃС‚РёС‚Рµ Р±РµР· --diff РґР»СЏ РїСЂРёРјРµРЅРµРЅРёСЏ."
         exit 5
     fi
 fi
 
 # === Dry-run mode ===
 if $DRY_RUN; then
-    echo "[dry-run] Будет создано в $RUNTIME_DIR/:"
+    echo "[dry-run] Р‘СѓРґРµС‚ СЃРѕР·РґР°РЅРѕ РІ $RUNTIME_DIR/:"
     for f in "${SUBSTITUTED_FILES[@]}"; do
         echo "  ~ $f (substituted)"
     done
     echo ""
-    echo "[dry-run] Будет скопировано в $WORKSPACE_DIR/:"
+    echo "[dry-run] Р‘СѓРґРµС‚ СЃРєРѕРїРёСЂРѕРІР°РЅРѕ РІ $WORKSPACE_DIR/:"
     for f in "${COPIED_FILES[@]}"; do
         echo "  + $f"
     done
     echo ""
-    echo "[dry-run] Build hash (для drift detection): ${INPUT_HASH:0:16}..."
-    echo "[dry-run] Без изменений на диске."
+    echo "[dry-run] Build hash (РґР»СЏ drift detection): ${INPUT_HASH:0:16}..."
+    echo "[dry-run] Р‘РµР· РёР·РјРµРЅРµРЅРёР№ РЅР° РґРёСЃРєРµ."
     exit 0
 fi
 
 # === Atomic swap: replace runtime + copy workspace files ===
-# WP-273 0.29.4 R6.3 fix: flock на $WORKSPACE_DIR/.iwe-runtime.lock — предотвращает
-# race window между двумя одновременными build-runtime ИЛИ build-runtime + scheduler.
-# scheduler.sh тоже берёт shared lock на этот файл перед чтением runner-путей.
+# WP-273 0.29.4 R6.3 fix: flock РЅР° $WORKSPACE_DIR/.iwe-runtime.lock вЂ” РїСЂРµРґРѕС‚РІСЂР°С‰Р°РµС‚
+# race window РјРµР¶РґСѓ РґРІСѓРјСЏ РѕРґРЅРѕРІСЂРµРјРµРЅРЅС‹РјРё build-runtime РР›Р build-runtime + scheduler.
+# scheduler.sh С‚РѕР¶Рµ Р±РµСЂС‘С‚ shared lock РЅР° СЌС‚РѕС‚ С„Р°Р№Р» РїРµСЂРµРґ С‡С‚РµРЅРёРµРј runner-РїСѓС‚РµР№.
 mkdir -p "$WORKSPACE_DIR"
 LOCK_FILE="${WORKSPACE_DIR}/.iwe-runtime.lock"
 
-# Используем flock если доступен (Linux всегда; macOS — через util-linux brew, optional)
+# РСЃРїРѕР»СЊР·СѓРµРј flock РµСЃР»Рё РґРѕСЃС‚СѓРїРµРЅ (Linux РІСЃРµРіРґР°; macOS вЂ” С‡РµСЂРµР· util-linux brew, optional)
 if command -v flock >/dev/null 2>&1; then
     exec 9>"$LOCK_FILE"
     if ! flock -x -w 30 9; then
-        echo "ERROR: build-runtime: не удалось получить exclusive lock на $LOCK_FILE за 30 сек" >&2
+        echo "ERROR: build-runtime: РЅРµ СѓРґР°Р»РѕСЃСЊ РїРѕР»СѓС‡РёС‚СЊ exclusive lock РЅР° $LOCK_FILE Р·Р° 30 СЃРµРє" >&2
         exit 6
     fi
 fi
 
-# 1. Replace .iwe-runtime/ atomically (под lock'ом — никто не читает в этот момент)
+# 1. Replace .iwe-runtime/ atomically (РїРѕРґ lock'РѕРј вЂ” РЅРёРєС‚Рѕ РЅРµ С‡РёС‚Р°РµС‚ РІ СЌС‚РѕС‚ РјРѕРјРµРЅС‚)
 RUNTIME_OLD="${RUNTIME_DIR}.old.$$"
 if [ -d "$RUNTIME_DIR" ]; then
     mv "$RUNTIME_DIR" "$RUNTIME_OLD"
@@ -359,16 +359,16 @@ mv "$BUILD_DIR/runtime" "$RUNTIME_DIR"
 # Cleanup old runtime
 [ -d "$RUNTIME_OLD" ] && rm -rf "$RUNTIME_OLD"
 
-# Lock освобождается автоматически при exit (FD 9 закрывается)
+# Lock РѕСЃРІРѕР±РѕР¶РґР°РµС‚СЃСЏ Р°РІС‚РѕРјР°С‚РёС‡РµСЃРєРё РїСЂРё exit (FD 9 Р·Р°РєСЂС‹РІР°РµС‚СЃСЏ)
 
-# 2. Copy workspace files (НЕ atomic — это не критично, файлы независимы)
+# 2. Copy workspace files (РќР• atomic вЂ” СЌС‚Рѕ РЅРµ РєСЂРёС‚РёС‡РЅРѕ, С„Р°Р№Р»С‹ РЅРµР·Р°РІРёСЃРёРјС‹)
 COPIED_COUNT=0
 for f in "${COPIED_FILES[@]}"; do
     src="$BUILD_DIR/workspace/$f"
     dst="$WORKSPACE_DIR/$f"
     mkdir -p "$(dirname "$dst")"
     if [ -f "$dst" ] && cmp -s "$src" "$dst"; then
-        : # skip — identical
+        : # skip вЂ” identical
     else
         cp "$src" "$dst"
         COPIED_COUNT=$((COPIED_COUNT + 1))
@@ -376,8 +376,8 @@ for f in "${COPIED_FILES[@]}"; do
 done
 
 if ! $QUIET; then
-    echo "✓ runtime: ${#SUBSTITUTED_FILES[@]} файлов в $RUNTIME_DIR/"
-    echo "✓ workspace: $COPIED_COUNT файлов обновлено / ${#COPIED_FILES[@]} проверено"
+    echo "вњ“ runtime: ${#SUBSTITUTED_FILES[@]} С„Р°Р№Р»РѕРІ РІ $RUNTIME_DIR/"
+    echo "вњ“ workspace: $COPIED_COUNT С„Р°Р№Р»РѕРІ РѕР±РЅРѕРІР»РµРЅРѕ / ${#COPIED_FILES[@]} РїСЂРѕРІРµСЂРµРЅРѕ"
     echo "  Build hash: ${INPUT_HASH:0:16}..."
     echo "  FMT version: $FMT_VERSION"
 fi
