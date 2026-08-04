@@ -16,8 +16,8 @@
 ## Конфигурация
 
 Читай:
-1. `{{WORKSPACE_DIR}}/{{GOVERNANCE_REPO}}/inbox/captures.md` — текущий inbox (для де-дупликации)
-2. `{{WORKSPACE_DIR}}/{{GOVERNANCE_REPO}}/inbox/feedback-log.md` — паттерны reject
+1. `/d/iwe/{{GOVERNANCE_REPO}}/inbox/captures.md` — текущий inbox (для де-дупликации)
+2. `/d/iwe/{{GOVERNANCE_REPO}}/inbox/feedback-log.md` — паттерны reject
 
 ## Алгоритм
 
@@ -25,7 +25,7 @@
 
 ```bash
 SINCE="${1:-12 hours ago}"  # по умолчанию 12h окно
-for repo in {{WORKSPACE_DIR}}/*/; do
+for repo in /d/iwe/*/; do
   if [ -d "$repo/.git" ]; then
     name=$(basename "$repo")
     cd "$repo" && git log --oneline --since="$SINCE" 2>/dev/null
@@ -79,7 +79,7 @@ done
 ### Шаг 6: Коммит
 
 ```bash
-cd {{WORKSPACE_DIR}}/{{GOVERNANCE_REPO}}
+cd /d/iwe/{{GOVERNANCE_REPO}}
 git add inbox/captures.md
 git commit -m "feed(git-diff): N capture-кандидатов из коммитов SINCE=$SINCE"
 ```

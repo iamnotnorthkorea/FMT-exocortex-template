@@ -26,18 +26,14 @@ set -uo pipefail
 
 # Load unified environment: WORKSPACE_DIR, IWE_ROOT, IWE_SCRIPTS, etc.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# Bootstrap sets IWE_ROOT/WORKSPACE_DIR/etc. It may be ABSENT on some hosts — tsekh-1's
-# extension sync does not copy .claude/lib/ — so source it only if present and never let
-# its absence abort the scaffold (the old `|| exit 1` killed every run on tsekh-1, which
-# is why the night generator always fell back to free-form synthesis).
-if [ -f "$SCRIPT_DIR/../.claude/lib/iwe-env-bootstrap.sh" ]; then
-  source "$SCRIPT_DIR/../.claude/lib/iwe-env-bootstrap.sh" || exit 1
-fi
-# Derive the essentials the scaffold + its helpers rely on. Bootstrap exports IWE_ROOT,
-# but the script uses $IWE; a clean caller (launchd / pipeline subprocess) exports
-# neither, so under `set -u` $IWE tripped «unbound variable» a few lines down.
-IWE_ROOT="${IWE_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd)}"
-IWE="${IWE:-$IWE_ROOT}"
+TEMPLATE_SCRIPTS_DIR="$SCRIPT_DIR"
+source "$TEMPLATE_SCRIPTS_DIR/lib/common.sh"
+# issue #329: old fallback assumed $SCRIPT_DIR/.. is always the workspace root —
+# false for a promoted copy at <governance-repo>/scripts/, which doubled the repo
+# name into every path. iwe_resolve_root() uses env-var precedence instead of
+# script-location guessing.
+IWE="$(iwe_resolve_root)"
+IWE_ROOT="$IWE"
 export IWE_ROOT IWE
 DATE="${1:-$(date +%Y-%m-%d)}"
 CONFIG="$IWE/${IWE_GOVERNANCE_REPO:-DS-strategy}/exocortex/day-rhythm-config.yaml"
@@ -84,10 +80,24 @@ YDAY_MONTH_RU="${MONTH_NAMES[$YDAY_MNUM]}"
 
 # --- YAML reader: parse config once, then do pure-bash lookup per call ---
 # _YAML_KEYS / _YAML_VALS are parallel arrays built by a single python3 invocation.
+#
+# WP-7 DOSCAF1 (2026-07-04): the field separator between key and value used to be
+# \x01 (introduced 2026-06-26, commit 043864e). /bin/bash on this machine is 3.2.57
+# (macOS's frozen pre-GPLv3 build) — verified live that `IFS=$'\x01' read -r k v`
+# NEVER splits on that byte under 3.2, in a heredoc, a pipe, or a file-read alike;
+# the whole "key+value" glob lands in $k and $v stays empty. Every read_yaml() call
+# has therefore returned "" for every real key since 2026-06-26, so every render_*()
+# gated on a config flag (news.enabled here, but the same mechanism backs video/
+# pomodoro/budget_spread) has been silently taking its "unset" branch regardless of
+# what day-rhythm-config.yaml actually says. \x1f (ASCII Unit Separator) splits
+# correctly under 3.2 too, per peer-review (kimi-headless, 2026-07-04) — it's the
+# stronger choice over a plain tab, which is ordinary whitespace and could
+# legitimately appear inside a YAML scalar; \x1f exists specifically to delimit
+# fields and cannot occur in a meaningful config value.
 _YAML_KEYS=()
 _YAML_VALS=()
 if [ -f "$CONFIG" ] && command -v python3 >/dev/null 2>&1; then
-  while IFS=$'\x01' read -r k v; do
+  while IFS=$'\x1f' read -r k v; do
     _YAML_KEYS+=("$k")
     _YAML_VALS+=("$v")
   done < <(python3 -c "
@@ -101,13 +111,19 @@ def flatten(d, prefix=''):
         else:
             yield full, '' if v is None else str(v)
 
+# A bare 'except: pass' here made EVERY read_yaml() lookup silently return '' on
+# any parse error too — config breakage and deliberate opt-out became
+# indistinguishable. Emit an explicit ok/error sentinel instead (bug-2026-06-05,
+# bug-2026-06-09, bug-2026-07-04).
 try:
     with open('$CONFIG') as f:
         d = yaml.safe_load(f) or {}
     for k, v in flatten(d):
-        print(k + '\x01' + v)
-except Exception:
-    pass
+        print(k + '\x1f' + v)
+    print('__yaml_parse_ok__\x1ftrue')
+except Exception as e:
+    print('__yaml_parse_ok__\x1ffalse')
+    print('__yaml_parse_error__\x1f' + str(e).replace(chr(10), ' ')[:200])
 " 2>/dev/null)
 fi
 
@@ -120,6 +136,16 @@ read_yaml() {
     fi
   done
 }
+
+# YAML_PARSE_OK=false covers both a parse exception (see sentinel above) and the
+# block above being skipped entirely (config missing / no python3) — either way,
+# every read_yaml() result for this run is unreliable and callers must say so.
+YAML_PARSE_OK="$(read_yaml "__yaml_parse_ok__")"
+YAML_PARSE_ERROR="$(read_yaml "__yaml_parse_error__")"
+if [ -z "$YAML_PARSE_OK" ]; then
+  YAML_PARSE_OK="false"
+  YAML_PARSE_ERROR="$CONFIG not found or python3 unavailable"
+fi
 
 # --- Deterministic context extractors (WP-7 DAP: strategy + day-close) ---
 extract_day_close_carry_over() {
@@ -170,35 +196,41 @@ extract_strategy_context() {
   local sessions_dir="$IWE/${IWE_GOVERNANCE_REPO:-DS-strategy}/sessions"
   local strategy_file=""
 
-  # 1. Strategy session markdown in current month
-  local month_dir
-  month_dir=$(ls -d "$sessions_dir"/"$(date +%Y-%m)" 2>/dev/null | head -1)
-  if [ -n "$month_dir" ] && [ -d "$month_dir" ]; then
-    strategy_file=$(find "$month_dir" -maxdepth 1 -type f -iname "*strategy*W${week_num}*.md" 2>/dev/null | sort | tail -1)
-    if [ -z "$strategy_file" ]; then
-      strategy_file=$(find "$month_dir" -maxdepth 1 -type f -iname "*strategy*.md" 2>/dev/null | sort | tail -1)
-    fi
-  fi
+  # 1. Strategy session markdown. Search current AND previous month: the session for a
+  # week usually happens at week start, which can fall in the prior month (W27 session
+  # was 2026-06-29, but Day Open runs in 2026-07 — the old current-month-only search
+  # missed it and printed "не найден").
+  local strategy_file d
+  for d in "$(date -j -v-0m -f "%Y-%m-%d" "$DATE" "+%Y-%m" 2>/dev/null || date -d "$DATE" "+%Y-%m" 2>/dev/null)" \
+           "$(date -j -v-1m -f "%Y-%m-%d" "$DATE" "+%Y-%m" 2>/dev/null || date -d "$DATE -1 month" "+%Y-%m" 2>/dev/null)"; do
+    [ -n "$d" ] || continue
+    local md="$sessions_dir/$d"
+    [ -d "$md" ] || continue
+    strategy_file=$(find "$md" -maxdepth 1 -type f -iname "*strategy*W${week_num}*.md" 2>/dev/null | sort | tail -1)
+    [ -n "$strategy_file" ] && break
+  done
 
   if [ -n "$strategy_file" ] && [ -f "$strategy_file" ]; then
+    # Extract the first matching priorities-like section. This session format uses
+    # "## Ключевые решения" rather than "## Приоритеты", so accept both.
     local priorities
     priorities=$(awk '
-      /^## Приоритеты/ { found=1; next }
+      /^## (Приоритеты|Ключевые решения)/ { found=1; next }
       /^## / && found { exit }
       found { print }
-    ' "$strategy_file" | sed '/^$/d' | head -15)
+    ' "$strategy_file" | sed '/^$/d' | head -12)
     if [ -n "$priorities" ]; then
       echo "$priorities"
       return 0
     fi
   fi
 
-  # 2. Fallback: extract TOS lines from WeekPlan
+  # 2. Fallback: pull R-goal / ТОС / priority lines from WeekPlan (formats vary).
   local weekplan
   weekplan=$(ls "$IWE/${IWE_GOVERNANCE_REPO:-DS-strategy}/current"/WeekPlan\ W"${week_num}"*.md 2>/dev/null | head -1)
   if [ -n "$weekplan" ] && [ -f "$weekplan" ]; then
     local tos
-    tos=$(grep -E "^\s*[-*]\s*(П[0-9]+|ТОС)" "$weekplan" 2>/dev/null | head -10)
+    tos=$(grep -E "^\s*[-*]\s*(П[0-9]+|ТОС|R[0-9])" "$weekplan" 2>/dev/null | head -10)
     if [ -n "$tos" ]; then
       echo "$tos"
       return 0
@@ -252,6 +284,9 @@ read_morning_priorities() {
 # --- Strategy_day guard (Ф6 WP-264) ---
 # Если сегодня strategy_day → не генерировать DayPlan (SKILL.md шаг 4).
 # Возвращает exit 2; extension обрабатывает этот код и выводит сообщение Claude.
+# DAY_OPEN_FORCE_STRATEGY_DAY=1 bypasses the guard without changing default behavior —
+# needed by week-open-day-section-patch.sh (WP-484 Ф3), which reuses this same
+# scaffold to build the "Открытие дня" section inside WeekPlan on strategy_day.
 STRATEGY_DAY_NAME=$(read_yaml "day_open.strategy_day" || true)
 case "${STRATEGY_DAY_NAME:-monday}" in
   monday)    STRATEGY_DOW=1 ;;
@@ -263,7 +298,7 @@ case "${STRATEGY_DAY_NAME:-monday}" in
   sunday)    STRATEGY_DOW=7 ;;
   *)         STRATEGY_DOW=0 ;;
 esac
-if [ "${DOW_NUM:-0}" = "$STRATEGY_DOW" ]; then
+if [ "${DOW_NUM:-0}" = "$STRATEGY_DOW" ] && [ "${DAY_OPEN_FORCE_STRATEGY_DAY:-0}" != "1" ]; then
   exit 2
 fi
 
@@ -303,16 +338,28 @@ render_video() {
 # DOC5/DOC10 (WP-7): секция «Мир» рендерится ВСЕГДА.
 # При news.enabled: false — секция содержит явное «выключено», не опускается.
 # При true — данные из server-news.sh или PENDING-маркеры.
+# DOC5/DOC10 (WP-7) + WP-7 DOSCAF1 (2026-07-04): секция «Мир» рендерится ВСЕГДА —
+# never a silent `return 0` (violates the no-silent-skip invariant at the top of this
+# file). Three explicit states: config didn't parse at all / news.enabled: false /
+# enabled (data from server-news.sh or PENDING-маркеры).
 render_world() {
   local enabled
-  enabled=$(read_yaml "news.enabled")
-  # DOC5/DOC10 (WP-7): секция «Мир» рендерится только при news.enabled: true.
-  # Сознательно выключено (news.enabled: false) → секция опускается ЦЕЛИКОМ (не «нет данных», не «выключено»).
-  # no-silent-skip остаётся для ПОЛОМОК (включено, но server-news.sh упал) — см. PENDING-блок ниже.
-  [ "$enabled" != "True" ] && return 0
   echo "<details>"
   echo "<summary><b>Мир</b></summary>"
   echo ""
+  if [ "$YAML_PARSE_OK" != "true" ]; then
+    echo "> ⚠️ \`day-rhythm-config.yaml\` не распарсился ($YAML_PARSE_ERROR) — не удалось прочитать \`news.enabled\`. Нет данных, пока конфиг не починен."
+    echo ""
+    echo "</details>"
+    return 0
+  fi
+  enabled=$(read_yaml "news.enabled")
+  if [ "$enabled" != "True" ]; then
+    echo "> \`news.enabled: false\` в \`day-rhythm-config.yaml\` — секция выключена. Нет данных."
+    echo ""
+    echo "</details>"
+    return 0
+  fi
   bash "$IWE/scripts/server-news.sh" "$CONFIG" 2>/dev/null || {
     echo "<!-- PENDING: world — RSS feeds недоступны (server-news.sh завершился с ошибкой). Каждый пункт = markdown URL. -->"
     echo ""
@@ -339,6 +386,8 @@ render_bot_qa() {
   else
     if [ "${TRIAGE_PF:-unknown}" = "fail" ]; then
       echo "**Дельта:** ⚠️ Отчёт feedback-triage за $DATE отсутствует. Scheduler, вероятно, не запущен (простой ≥1 дня)."
+    elif [ "${TRIAGE_PF:-unknown}" = "disabled" ]; then
+      echo "**Дельта:** feedback-triage не установлен на этой машине"
     else
       echo "**Дельта:** нет данных (отчёт за $DATE отсутствует)"
     fi
@@ -350,7 +399,7 @@ render_bot_qa() {
   fi
   echo
   # Шаг 5 SKILL: core smoke синхронно. Раньше оставлялся PENDING-placeholder (bug-2026-06-12).
-  local smoke_script="$IWE/${IWE_GOVERNANCE_REPO:-DS-strategy}/scripts/day-open-smoke.sh" smoke_json
+  local smoke_script="$TEMPLATE_SCRIPTS_DIR/day-open-smoke.sh" smoke_json
   if [ -f "$smoke_script" ]; then
     smoke_json=$(bash "$smoke_script" 2>/dev/null)
     if [ -n "$smoke_json" ]; then
@@ -363,36 +412,84 @@ render_bot_qa() {
   fi
 }
 
+# Portable per-call timeout — no `timeout`/`gtimeout` dependency (often missing on
+# macOS, see issue #230). Bounds a backgrounded command to $2 seconds; on timeout,
+# kills it and returns whatever it had already written to stdout.
+# Usage: run_bounded <seconds> <cmd...>
+run_bounded() {
+  local secs="$1"; shift
+  local out_file start
+  out_file=$(mktemp)
+  ("$@" >"$out_file" 2>/dev/null) &
+  local pid=$!
+  start=$SECONDS
+  while kill -0 "$pid" 2>/dev/null; do
+    sleep 0.2
+    [ $((SECONDS - start)) -ge "$secs" ] && { kill "$pid" 2>/dev/null; break; }
+  done
+  wait "$pid" 2>/dev/null
+  cat "$out_file"
+  rm -f "$out_file"
+}
+
+# iwe_repo_dirs — печатает поддиректории с .git, дедуплицированные по реальному
+# физическому пути. Без этого repo-symlink алиас (напр. legacy-имя репозитория,
+# оставленное как compat-шим после переименования) считается отдельным репозиторием
+# наравне с оригиналом — двойные строки в таблицах активности, завышенный вдвое
+# счётчик коммитов в «Итогах вчера» (найдено 2026-07-17).
+iwe_repo_dirs() {
+  local repo real seen=""
+  for repo in "$@"; do
+    [ -d "$repo/.git" ] || continue
+    real=$(cd -P "$repo" 2>/dev/null && pwd) || continue
+    case " $seen " in
+      *" $real "*) continue ;;
+    esac
+    seen="$seen $real"
+    echo "$repo"
+  done
+}
+
 # --- Section: Новые задачи в репозиториях (issue sweep, 2 дня) ---
 # Сигнальный канал из day-open/SKILL.md:54 (раньше был только в спеке, не в коде).
 # Ленивый: кэш 1ч + fallback при недоступности gh — не ломает pipeline (требование peer-сессии 2026-06-04-32).
+# Каждый `gh issue list` ограничен $ISSUE_SWEEP_TIMEOUT секунд (issue #241: на WSL2
+# один зависший сетевой вызов без тайм-бокса вешал весь sweep на 180с+ без вывода).
 render_repo_issues() {
   command -v gh >/dev/null 2>&1 || { echo "_gh CLI недоступен — обзор задач пропущен._"; return; }
   local cache="/tmp/iwe-issue-sweep-$DATE.md"
   if [ -f "$cache" ] && [ -n "$(find "$cache" -mmin -60 2>/dev/null)" ]; then
     cat "$cache"; return
   fi
-  if ! gh auth status >/dev/null 2>&1; then
-    echo "_gh не авторизован — обзор задач пропущен (проверьте \`gh auth login\`)._"; return
+  # issue #241 (остаточная дыра): gh auth status делает сетевой запрос к GitHub API
+  # для валидации токена — на WSL2 с проблемной сетью может зависнуть тем же классом
+  # бага, что уже закрыт для gh issue list ниже. run_bounded не пробрасывает exit-код
+  # обёрнутой команды (возвращает статус cat/rm) — поэтому результат передаём через
+  # маркер в stdout, а не через "if ! run_bounded ...".
+  local auth_ok
+  auth_ok=$(run_bounded "${ISSUE_SWEEP_TIMEOUT:-10}" bash -c "gh auth status >/dev/null 2>&1 && echo ok")
+  if [ "$auth_ok" != "ok" ]; then
+    echo "_gh не авторизован или GitHub недоступен — обзор задач пропущен (проверьте \`gh auth login\` и сеть)._"; return
   fi
   local since
   since=$(date -v-2d +%Y-%m-%d 2>/dev/null || date -d "2 days ago" +%Y-%m-%d 2>/dev/null)
   [ -z "$since" ] && { echo "_не удалось вычислить дату фильтра — пропуск._"; return; }
   local out="" any=0 repo slug rows stale_count stale_url
-  for repo in "$IWE"/*/; do
-    [ -d "${repo}.git" ] || continue
+  while IFS= read -r repo; do
     git -C "$repo" remote get-url origin 2>/dev/null | grep -qi github || continue
     slug=$(basename "$repo")
     # New issues (last 2 days)
-    rows=$( (cd "$repo" && gh issue list --state open --search "created:>=$since" \
-             --json number,title --jq '.[] | "| #\(.number) | \(.title) |"' 2>/dev/null) )
+    rows=$(run_bounded "${ISSUE_SWEEP_TIMEOUT:-10}" bash -c \
+      "cd '$repo' && gh issue list --state open --search 'created:>=$since' \
+       --json number,title --jq '.[] | \"| #\(.number) | \(.title) |\"'")
     if [ -n "$rows" ]; then
       out="${out}\n**${slug} (новые):**\n\n| # | Заголовок |\n|---|---|\n${rows}\n"
       any=1
     fi
     # Stale issues: open + labeled stale-unattended (pipeline gap fix, issue #pipeline)
-    stale_count=$( (cd "$repo" && gh issue list --state open --label "stale-unattended" \
-                   --json number --jq 'length' 2>/dev/null) || echo "0" )
+    stale_count=$(run_bounded "${ISSUE_SWEEP_TIMEOUT:-10}" bash -c \
+      "cd '$repo' && gh issue list --state open --label 'stale-unattended' --json number --jq 'length'")
+    [ -z "$stale_count" ] && stale_count=0
     if [ "${stale_count:-0}" -gt 0 ] 2>/dev/null; then
       local remote_url
       remote_url=$(git -C "$repo" remote get-url origin 2>/dev/null \
@@ -401,7 +498,7 @@ render_repo_issues() {
       out="${out}\n⚠️ **${slug}:** ${stale_count} старых issues без движения → [открыть фильтр](${stale_url})\n"
       any=1
     fi
-  done
+  done < <(iwe_repo_dirs "$IWE"/*/)
   if [ "$any" = "1" ]; then
     printf "%b" "$out" | tee "$cache"
   else
@@ -417,15 +514,14 @@ render_repo_activity() {
   since=$(date -v-2d +%Y-%m-%d 2>/dev/null || date -d "2 days ago" +%Y-%m-%d 2>/dev/null)
   [ -z "$since" ] && { echo "_не удалось вычислить дату фильтра — пропуск._"; return; }
   out="| Репозиторий | Коммитов (2д) | Последний |\n|---|---|---|\n"
-  for repo in "$IWE"/*/; do
-    [ -d "${repo}.git" ] || continue
+  while IFS= read -r repo; do
     slug=$(basename "$repo")
     n=$(git -C "$repo" log --since="$since 00:00:00" --oneline 2>/dev/null | wc -l | tr -d ' ')
     [ "${n:-0}" -eq 0 ] && continue
     last=$(git -C "$repo" log -1 --format='%s' 2>/dev/null | cut -c1-50)
     out="${out}| ${slug} | ${n} | ${last} |\n"
     any=1
-  done
+  done < <(iwe_repo_dirs "$IWE"/*/)
   if [ "$any" = "1" ]; then
     printf "%b" "$out"
   else
@@ -439,10 +535,12 @@ render_iwe_status() {
   echo "|------------|--------|--------|"
 
   # Per-role launchd agents (старый com.exocortex.scheduler отключён с марта 2026)
-  # Проверяем exit-status ключевых per-role агентов через launchctl list
+  # com.strategist.morning намеренно отключён 2026-06-13 (bug-2026-06-12-day-open-dual-writer-race.md):
+  # сервер = единственный владелец Day Open. На Mac владельцем конвейера Day Open теперь
+  # является com.iwe.day-open (WP-356). Проверяем его + остальные per-role агенты.
   if command -v launchctl &>/dev/null; then
     local agents_bad=""
-    for agent in com.strategist.morning com.strategist.notereview com.pulse.daily com.aisystant.profiler.recalculate; do
+    for agent in com.iwe.day-open com.strategist.notereview com.pulse.daily com.aisystant.profiler.recalculate; do
       local line status
       line=$(launchctl list 2>/dev/null | awk -v a="$agent" '$3==a{print}')
       [ -z "$line" ] && { agents_bad="$agents_bad $agent(missing)"; continue; }
@@ -488,6 +586,8 @@ render_iwe_status() {
     else
       echo "| Scout | 🔴 | нет отчёта на $DATE. Логи не найдены — служба не настроена |"
     fi
+  elif [ "${SCOUT_PF:-unknown}" = "disabled" ]; then
+    echo "| Scout | ⚪ | не установлен на этой машине |"
   else
     echo "| Scout | 🟡 | статус Scout не определён (preflight unavailable) |"
   fi
@@ -504,8 +604,13 @@ render_iwe_status() {
   last_watchdog_log=$(ls -t "$HOME/logs/synchronizer/feedback-watchdog-"*.log 2>/dev/null | head -1 || echo "")
   local last_feedback_triage_log
   last_feedback_triage_log=$(ls -t "$IWE/${IWE_GOVERNANCE_REPO:-DS-strategy}/logs/feedback-triage"*.log 2>/dev/null | head -1 || echo "")
+  # issue #261: старая маска ловила только legacy-метки (iwe.scheduler и т.п.), под которые
+  # не попадают ни current per-role юниты, ни даже шаблонный com.exocortex.scheduler.plist.
+  # WP-5 Ubuntu-audit факт #4: launchctl unconditionally also meant Linux always saw this
+  # as false (launchctl doesn't exist there) — iwe_scheduler_active() (lib/common.sh)
+  # branches launchd/systemd by what's actually on PATH.
   local has_launchd_unit=false
-  if launchctl list 2>/dev/null | grep -qE "iwe\.(scheduler|feedback-watchdog|synchronizer|feedback-triage)"; then
+  if iwe_scheduler_active; then
     has_launchd_unit=true
   fi
 
@@ -540,6 +645,14 @@ render_iwe_status() {
     else
       echo "| Scheduler/триаж | 🟡 | Mode B: feedback-triage зарегистрирован, но лог не обновлялся ${last_log_age_days}д — возможно cron skipped |"
     fi
+  elif [ "$has_launchd_unit" = "true" ] && [ -z "$last_watchdog_log" ] && [ -z "$last_feedback_triage_log" ]; then
+    # issue #292 follow-up to #261: юнит(ы) планировщика зарегистрированы (кто-то
+    # разворачивал роли на этой машине), но НИ ОДНОГО лога feedback-triage не было
+    # НИКОГДА (не только сегодня/недавно — ls -t по всей истории пуст). Это не
+    # «cron не отработал» (Mode A), это «роль feedback-triage не развёрнута на
+    # этой инсталляции» — отсутствие роли не авария, ⚪. Настоящий Mode A (cron
+    # infra целиком отсутствует) остаётся ниже, под has_launchd_unit=false.
+    echo "| Scheduler/триаж | ⚪ | роль feedback-triage не развёрнута на этой машине (юнит планировщика есть, логов триажа не было никогда) |"
   else
     # Mode A: cron не запущен (нет юнита в launchctl) + нет свежих логов
     local last_log_age_days="∞"
@@ -550,9 +663,15 @@ render_iwe_status() {
     fi
     echo "| Scheduler/триаж | 🔴 | **Mode A** (cron не отработал): юнит feedback-triage не зарегистрирован в launchctl, последний лог ${last_log_age_days}д назад |"
 
-    # Auto-create incident-файл если ещё нет за сегодня
+    # Auto-create incident-файл если ещё нет за сегодня И не подавлен явно (issue
+    # #292: имя файла содержит дату — [ ! -f incident_file ] никогда не срабатывало
+    # на «сегодня другая дата» повторно, `status: deferred` в файле вчерашней даты
+    # не переживал смену даты. Отдельный маркер без даты — переживает.
+    local incident_suppress="$IWE/${IWE_GOVERNANCE_REPO:-DS-strategy}/inbox/.incident-suppress-scheduler-cron-not-fired"
     local incident_file="$IWE/${IWE_GOVERNANCE_REPO:-DS-strategy}/inbox/INCIDENT-scheduler-cron-not-fired-$DATE.md"
-    if [ ! -f "$incident_file" ]; then
+    if [ -f "$incident_suppress" ]; then
+      echo "  (инцидент подавлен: $incident_suppress — удалите файл, чтобы возобновить авто-создание)"
+    elif [ ! -f "$incident_file" ]; then
       mkdir -p "$IWE/${IWE_GOVERNANCE_REPO:-DS-strategy}/inbox"
       cat > "$incident_file" <<INCEOF
 ---
@@ -572,20 +691,25 @@ auto_generated: true
 
 ## Симптом (auto-detected)
 
-- launchctl: юнит \`iwe.scheduler\` или \`iwe.feedback-watchdog\` отсутствует
+- launchctl: ни один из юнитов \`com.exocortex.scheduler\`, \`com.strategist.morning\`, \`com.strategist.weekreview\`, \`com.extractor.inbox-check\` не зарегистрирован
 - Последний лог \`~/logs/synchronizer/feedback-watchdog-*.log\` старше 24ч (или отсутствует)
 - Mode A классификация (см. peer-сессия 2026-05-30-07 §Gap 3)
 
 ## Action items
 
 1. Проверить \`~/Library/LaunchAgents/\` на наличие plist
-2. \`bash $IWE/${IWE_GOVERNANCE_REPO:-DS-strategy}/scripts/install-launchd.sh\` для регистрации
-3. Запустить руками: \`bash \${IWE_SCHEDULER_PATH:-$IWE/scripts/scheduler.sh} --dry-run\`
+2. Переустановить роли: \`bash setup.sh\` (секция [5/6]) — либо вручную по \`roles/ROLE-CONTRACT.md\`
+3. Запустить руками: \`bash \${IWE_SCRIPTS:-$IWE/FMT-exocortex-template/scripts}/../roles/synchronizer/scripts/scheduler.sh --dry-run\` (legacy-скрипт, актуален только если ваша инсталляция ещё не мигрировала на per-role юниты)
 
 ## Auto-generation note
 
-Этот файл создан автоматически day-open-scaffold.sh при каждом обнаружении Mode A.
-Если решено отложить fix — поставить \`status: deferred\` и убрать \`auto_generated\` поле, чтобы скаффолд не перезаписывал контекст.
+Этот файл создан автоматически day-open-scaffold.sh при каждом обнаружении Mode A — имя файла содержит дату, поэтому завтрашний Mode A создаст НОВЫЙ файл с новой датой независимо от того, что вы сделаете с этим (правка frontmatter внутри датированного файла не переживает смену даты — issue #292).
+
+Если решено отложить fix и не получать новый инцидент-файл каждый день — создайте маркер:
+\`\`\`bash
+touch "\${IWE_GOVERNANCE_REPO:-DS-strategy}/inbox/.incident-suppress-scheduler-cron-not-fired"
+\`\`\`
+Удалите маркер, чтобы возобновить авто-создание.
 INCEOF
     fi
   fi
@@ -610,9 +734,16 @@ INCEOF
   fi
 
   # update.sh check (FMT)
+  # issue #241 (остаточная дыра): вызов делает сетевой ls-remote/fetch внутри —
+  # без тайм-бокса тот же класс зависания на WSL2 воспроизводится даже после
+  # фикса a3d0b95 (тот фикс закрыл только gh issue list ниже по heredoc).
+  # issue #278: полный --check без --fast сравнивает 500+ файлов построчно —
+  # заведомо не укладывается в тайм-бокс, обновление тихо теряется как "проверено".
+  # --fast (issue #230) сравнивает только версию манифеста — секунда вместо минут.
   if [ -d "$IWE/FMT-exocortex-template" ]; then
     local upd_status
-    upd_status=$(cd "$IWE/FMT-exocortex-template" && bash update.sh --check 2>&1 | grep -oE '[0-9]+ обновлен|нет обновлен|актуал' | head -1)
+    upd_status=$(run_bounded "${ISSUE_SWEEP_TIMEOUT:-10}" bash -c \
+      "cd '$IWE/FMT-exocortex-template' && bash update.sh --check --fast 2>&1 | grep -oE 'Версия совпадает|Версия отличается' | head -1")
     echo "| Update IWE | 🟢 | ${upd_status:-проверено} |"
   fi
 
@@ -620,7 +751,7 @@ INCEOF
   for repo in FPF SPF ZP; do
     local d="$IWE/$repo"
     if [ -d "$d/.git" ]; then
-      git -C "$d" fetch --quiet 2>/dev/null
+      run_bounded "${ISSUE_SWEEP_TIMEOUT:-10}" git -C "$d" fetch --quiet >/dev/null 2>&1
       local behind
       behind=$(git -C "$d" rev-list --count HEAD..origin/main 2>/dev/null || echo 0)
       if [ "$behind" -gt 0 ]; then
@@ -649,9 +780,32 @@ render_scout() {
   fi
 }
 
+# --- Section: Разбор заметок (fleeting-notes) ---
+# Парсит inbox/fleeting-notes.md на наличие непрочитанных заметок (строки **Title**).
+# Если пусто → "нет заметок" без маркера PENDING → LLM секцию не трогает.
+# Если есть → строки таблицы с реальными заголовками и PENDING на Тип/Предложение.
+# Bold **text** в GitHub не создаёт якорей — ссылки без #якорь.
+render_fleeting_notes() {
+  local notes_file="$IWE/${IWE_GOVERNANCE_REPO:-DS-strategy}/inbox/fleeting-notes.md"
+
+  # Extract titles of new unprocessed notes (lines matching **Title**)
+  local new_notes
+  new_notes=$(grep -E '^\*\*[^*]+\*\*[[:space:]]*$' "$notes_file" 2>/dev/null \
+    | sed 's/^\*\*//; s/\*\*[[:space:]]*$//')
+
+  if [ -z "$new_notes" ]; then
+    printf '| нет заметок | — | — | ✅ |\n'
+  else
+    while IFS= read -r title; do
+      # Link to file without anchor — bold text has no GitHub markdown anchor
+      printf '| [«%s»](../inbox/fleeting-notes.md) | <!-- PENDING --> | <!-- PENDING --> | [ ] |\n' "$title"
+    done <<< "$new_notes"
+  fi
+}
+
 # --- Section: Gate-метрики (WP-423 Ф6.4) ---
 render_gate_metrics() {
-  local script="$IWE/${IWE_GOVERNANCE_REPO:-DS-strategy}/scripts/gate-metrics.sh"
+  local script="$TEMPLATE_SCRIPTS_DIR/gate-metrics.sh"
   local log="${HOME}/.iwe/gate-decisions.jsonl"
   echo "<details>"
   echo "<summary><b>Gate-метрики</b></summary>"
@@ -662,7 +816,7 @@ render_gate_metrics() {
     echo "> Лог gate-решений не найден: \`$log\`"
     echo "> Запустите \`iwe-agent-dispatcher.py\` или \`overnight-auditor.sh\`, чтобы появились данные."
   else
-    bash "$script" "$log" 2>/dev/null || echo "> ⚠️ gate-metrics.sh завершился с ошибкой"
+    bash "$script" "$log" "$DATE" 2>/dev/null || echo "> ⚠️ gate-metrics.sh завершился с ошибкой"
   fi
   echo ""
   echo "</details>"
@@ -701,8 +855,14 @@ render_content_cleanup() {
     echo "> Реестр сигналов очистки базы знаний не настроен."
     return
   fi
+  # Only CC-entries before the first "## Архив"/"## Разобрано" heading are open --
+  # resolved entries move under those headings but their <summary> line itself never
+  # gets a ✅ marker (only a prose note in "## Метрики"), so filtering on ✅ alone
+  # kept surfacing months-old closed signals as "N на разбор" (found 2026-07-28: CC-103,
+  # closed 2026-06-14, still showed up because its heading had no ✅).
   local open
-  open=$(grep -E '<summary><strong>CC-[0-9]' "$file" | grep -v '✅' || true)
+  open=$(awk '/^## (Архив|Разобрано)/{exit} {print}' "$file" \
+    | grep -E '<summary><strong>CC-[0-9]' || true)
   if [ -z "$open" ]; then
     echo "> Разобрано — открытых сигналов нет."
     return
@@ -720,20 +880,110 @@ render_content_cleanup() {
   echo "Реестр: \`${IWE_GOVERNANCE_REPO:-DS-strategy}/current/content-cleanup-backlog.md\`"
 }
 
+# --- Section: Требует внимания (bug 2026-07-15: PENDING synthesis had no source data) ---
+# day-open-llm-fill.py fills PENDING chunks in per-section isolation (see its header
+# comment) — a chunk never sees any other section's rendered text. This section's old
+# PENDING comment asked the model to "collect from steps 1-6", which it structurally
+# could not do, so it paraphrased the instruction itself instead of real findings.
+# Every check below only reads facts this script already computed elsewhere — no
+# synthesis, so no LLM call, matching the file's own "Enforcement требует наблюдателя
+# вне субъекта" principle at the top of this file.
+render_attention() {
+  local items=()
+
+  # Carry-over WP explicitly deferred (not folded into today's plan) — extract_day_close_carry_over
+  # marks these with "(отложено" (see render output in current/DayPlan for the exact wording).
+  if printf '%s' "${DAY_CLOSE_CARRY_OVER:-}" | grep -q '(отложено'; then
+    local deferred_count
+    deferred_count=$(printf '%s' "$DAY_CLOSE_CARRY_OVER" | grep -c '(отложено')
+    items+=("carry-over: $deferred_count РП из вчерашнего Day Close отложены и не попали в сегодняшний план — решить, брать ли")
+  fi
+
+  # IWE-светофор: любая строка 🟡/🔴 в уже отрендеренной таблице (Scout, Scheduler/триаж,
+  # Update IWE, FPF/SPF/ZP и т.д.) — таблица сама уже несёт конкретику, просто цитируем её.
+  local status_row
+  while IFS= read -r status_row; do
+    [ -z "$status_row" ] && continue
+    items+=("светофор: ${status_row}")
+  done < <(printf '%s\n' "${IWE_STATUS_TABLE:-}" | grep -E '🟡|🔴' | sed -E 's/^\| *//; s/ *\|$//; s/ *\| */: /g')
+
+  # Мир без ссылок — проверяем уже отрендеренную секцию напрямую, без второго PENDING.
+  # Явное «выключено»/«конфиг сломан» уже видно в самой секции «Мир» — не дублируем.
+  if ! printf '%s' "${WORLD_SECTION:-}" | grep -q 'news.enabled: false\|не распарсился'; then
+    if ! printf '%s' "${WORLD_SECTION:-}" | grep -q '](http'; then
+      items+=("Мир: секция без единой ссылки на источник — заполнить руками")
+    fi
+  fi
+
+  # KE-SLA: oldest ≥3 дня — 🔴, не 🟡 (peer-консенсус 2026-05-30-07, см. day-open/SKILL.md).
+  local smoke_script="$TEMPLATE_SCRIPTS_DIR/day-open-smoke.sh"
+  if [ -f "$smoke_script" ]; then
+    local ke_oldest
+    ke_oldest=$(bash "$smoke_script" 2>/dev/null | jq -r '.ke_oldest_days // empty' 2>/dev/null)
+    if [[ "$ke_oldest" =~ ^[0-9]+$ ]] && [ "$ke_oldest" -ge 3 ]; then
+      items+=("🔴 очередь фиксации знаний (KE) копится ${ke_oldest} дн. подряд (SLA ≤24ч) — разобрать через /apply-captures")
+    fi
+  fi
+
+  # Орг-сигналы R31 — только строки со статусом ⚠, остальное (✅) не пилотский сигнал.
+  local orgdev_file="$IWE/${IWE_GOVERNANCE_REPO:-DS-strategy}/current/orgdev-signals.md"
+  if [ -f "$orgdev_file" ]; then
+    local warn_row
+    while IFS= read -r warn_row; do
+      [ -z "$warn_row" ] && continue
+      items+=("орг-сигнал (R31): ${warn_row}")
+    done < <(grep -E '^\|.*⚠' "$orgdev_file" | sed -E 's/^\| *[0-9]+ *\| *//; s/ *\|$//; s/ *\| */: /g')
+  fi
+
+  if [ "${#items[@]}" -eq 0 ]; then
+    echo "— нет сигналов, требующих внимания."
+    return
+  fi
+  local item
+  for item in "${items[@]}"; do
+    echo "- $item"
+  done
+}
+
 # --- Section: Итоги вчера (commits stats + sessions) ---
 render_yesterday() {
   local total=0 repos=0
-  for repo in "$IWE"/*/; do
-    [ -d "$repo/.git" ] || continue
+  while IFS= read -r repo; do
     local n
     n=$(git -C "$repo" log --since="$YDAY 00:00" --until="$YDAY 23:59" --oneline 2>/dev/null | wc -l | tr -d ' ')
     if [ "$n" -gt 0 ]; then
       total=$((total + n))
       repos=$((repos + 1))
     fi
-  done
-  echo "**Коммиты:** $total в $repos репо | **РП закрыто:** <!-- PENDING: count из git log + WeekPlan -->"
+  done < <(iwe_repo_dirs "$IWE"/*/)
+  # "РП закрыто" needs a real Day Close as its source. If yesterday's close isn't
+  # committed, the LLM has no ground truth and invents a count (2026-07-01: "10 закрыто"
+  # was pure hallucination). Detect the close deterministically; only defer to the LLM
+  # when it exists. The pipeline's race guard normally prevents this path, but --force
+  # runs can still reach it.
+  # If the governance repo is missing, the `cd` fails silently and empties dc_committed
+  # regardless of the grep below (bug 2026-07-02) — the else-branch then reports
+  # "нет данных" honestly instead of letting the LLM invent a count.
+  local dc_committed
+  dc_committed=$(cd "$IWE/${IWE_GOVERNANCE_REPO:-DS-strategy}" && git log --since="$YDAY 00:00:00" -i \
+    --grep="day-close.*$YDAY" --format=%H 2>/dev/null | head -1)
+  if [ -n "$dc_committed" ]; then
+    echo "**Коммиты:** $total в $repos репо | **РП закрыто:** <!-- PENDING: count из Day Close отчёта за $YDAY -->"
+  else
+    echo "**Коммиты:** $total в $repos репо | **РП закрыто:** нет данных (Day Close за $YDAY не найден)"
+  fi
   echo
+  # Extension point: авторский hook для дополнительных сигналов состояния (напр. сон/пульс
+  # покоя). L1 не знает, что именно печатает hook — вся логика в extensions/, которых
+  # у пользователей шаблона без своего extension-файла просто не будет.
+  if [ -x "$IWE/extensions/day-open.summary-extra.sh" ]; then
+    local extra_summary
+    if ! extra_summary=$("$IWE/extensions/day-open.summary-extra.sh" "$YDAY"); then
+      echo "day-open: extension day-open.summary-extra.sh failed; continuing without its output" >&2
+      extra_summary=""
+    fi
+    [ -n "$extra_summary" ] && { echo "$extra_summary"; echo; }
+  fi
   # Sessions consolidation (DAP1-B/1-C, WP-7): включить РП сессий вчерашнего дня
   local day_report_file="$IWE/${IWE_GOVERNANCE_REPO:-DS-strategy}/current/DayReport-${YDAY}.md"
   if [ -f "$day_report_file" ]; then
@@ -758,7 +1008,11 @@ render_yesterday() {
     fi
   fi
   echo
-  echo "<!-- PENDING: ключевое — 1-3 значимых результата вчерашнего дня (требует синтеза из коммитов) -->"
+  if [ -n "$dc_committed" ]; then
+    echo "<!-- PENDING: ключевое — 1-3 значимых результата вчерашнего дня (требует синтеза из коммитов) -->"
+  else
+    echo "_Ключевое появится после Day Close за $YDAY._"
+  fi
 }
 
 # --- Section: Compact Dashboard (WP-7 Block DOC) ---
@@ -789,9 +1043,16 @@ render_compact_dashboard() {
 
   # Светофор — критические позиции
   echo "**IWE за ночь:**"
-  echo "  Scheduler: $(launchctl list 2>/dev/null | grep -qE 'iwe\.(scheduler|feedback)' && echo '🟢' || echo '🔴 не запущен')"
-  local fpf_status
-  if [ -d "$IWE/FPF/.git" ] && git -C "$IWE/FPF" fetch --quiet 2>/dev/null; then
+  # WP-5 Ubuntu-audit факт #4: this used the same pre-#261 legacy label regex as
+  # the OTHER launchctl check in this file (fixed above) — AND was unconditional
+  # launchctl, so Linux always read 🔴 regardless of the actual systemd timers.
+  echo "  Scheduler: $(iwe_scheduler_active && echo '🟢' || echo '🔴 не запущен')"
+  local fpf_status fpf_fetch_ok
+  # issue #241 (остаточная дыра): та же незащищённая git fetch, тот же класс зависания.
+  # run_bounded не пробрасывает exit-код — результат передаём через маркер в stdout.
+  fpf_fetch_ok=$([ -d "$IWE/FPF/.git" ] && run_bounded "${ISSUE_SWEEP_TIMEOUT:-10}" \
+    bash -c "git -C '$IWE/FPF' fetch --quiet 2>/dev/null && echo ok")
+  if [ "$fpf_fetch_ok" = "ok" ]; then
     local behind; behind=$(git -C "$IWE/FPF" rev-list --count HEAD..origin/main 2>/dev/null || echo "?")
     fpf_status=$( [ "$behind" = "0" ] && echo "🟢" || echo "🟡 новых: $behind" )
   else
@@ -802,9 +1063,46 @@ render_compact_dashboard() {
   echo "---END-COMPACT-DASHBOARD---"
 }
 
-# --- Pre-compute sweep list and full output (single call, reused below) ---
-# SWEEP_WP_FULL: full markdown table for "Активные РП" section (line ~975)
-# SWEEP_WP_LIST: WP-NNN IDs for PENDING injection — extracted from SWEEP_WP_FULL, no second call
+# --- Section: Саморазвитие (active draft, deterministic) ---
+# The active draft comes from draft-list.md, not the LLM. Handing this to the LLM
+# with the file absent produced a hallucinated "D-001" (2026-07-01). "Где остановился"
+# is the pilot's own progress — we never fabricate it (see feedback_no_invented_personal_history).
+render_self_dev() {
+  local draft_list="$IWE/${IWE_GOVERNANCE_REPO:-DS-strategy}/drafts/draft-list.md"
+  if [ ! -f "$draft_list" ]; then
+    echo "**Активный черновик:** нет данных (drafts/draft-list.md не найден)"
+    return
+  fi
+  # Registry rows are newest-first; take the first one whose stage column is "черновик".
+  local row
+  row=$(awk -F'|' '
+    /^\| *\*\*D-[0-9]+\*\*/ {
+      stage=$4; gsub(/^[ \t]+|[ \t]+$/, "", stage);
+      if (stage=="черновик") { print; exit }
+    }' "$draft_list")
+  if [ -z "$row" ]; then
+    echo "**Активный черновик:** нет активных черновиков в draft-list.md"
+    return
+  fi
+  local dnum path
+  dnum=$(echo "$row" | grep -oE 'D-[0-9]+' | head -1)
+  path=$(echo "$row" | grep -oE '\(\./[^)]+\)' | head -1 | tr -d '()' | sed 's#^\./#drafts/#')
+  if [ -n "$path" ]; then
+    echo "**Активный черновик:** [$dnum]($path)"
+  else
+    echo "**Активный черновик:** $dnum (ссылка не распознана в draft-list.md)"
+  fi
+  echo "**Где остановился:** открой файл черновика — прогресс ведёт пилот."
+  echo "**Сегодня:** 60-90 мин на редактирование / структурирование."
+}
+SELF_DEV_BLOCK=$(render_self_dev)
+
+# --- Pre-compute sweep list (single call, reused below) ---
+# SWEEP_WP_FULL: raw active-wp-sweep.sh output, kept only as input to SWEEP_WP_LIST below.
+# WP-7 DOSCAF1 (2026-07-04): no longer feeds an "Активные РП" DayPlan section — that
+# section was removed as a duplicate of current/priorities.yaml + current/active-wp.md.
+# SWEEP_WP_LIST: WP-NNN IDs for the "План на сегодня" PENDING instructions (line ~973) —
+# tells the LLM which open WPs beyond priorities.yaml to consider for today's plan.
 SWEEP_WP_FULL=$(bash "$IWE/scripts/active-wp-sweep.sh" "$IWE/${IWE_GOVERNANCE_REPO:-DS-strategy}/inbox" "$IWE" 2>/dev/null \
   || echo "<!-- active-wp-sweep: ошибка запуска -->")
 SWEEP_WP_LIST=$(echo "$SWEEP_WP_FULL" \
@@ -814,6 +1112,12 @@ SWEEP_WP_LIST=$(echo "$SWEEP_WP_FULL" \
 DAY_CLOSE_CARRY_OVER=$(extract_day_close_carry_over "$YDAY" | sed 's/^/  /')
 STRATEGY_CONTEXT=$(extract_strategy_context "$WEEK_NUM" | sed 's/^/  /')
 MORNING_PRIORITIES=$(read_morning_priorities | sed 's/^/  /')
+
+# Captured once (not inlined via $(...) in the heredoc below) so render_attention()
+# can read the same rendered text later without re-running server-news.sh a second
+# time and without needing render_iwe_status's internal checks duplicated.
+IWE_STATUS_TABLE=$(render_iwe_status)
+WORLD_SECTION=$(render_world)
 
 # --- Output ---
 cat <<EOF
@@ -839,28 +1143,9 @@ generated_by: day-open-scaffold.sh (WP-264 Ф2)
 <details>
 <summary><b>Саморазвитие</b></summary>
 
-- **Изучи персональное руководство:** [personal-guide](https://github.com/TserenTserenov/personal-guide)
+- **Изучи персональное руководство:** личное руководство (репозиторий \`personal-guide\` на твоём GitHub — см. \`/connect-guide\`)
 
-<!-- PENDING: self_dev — прочитать drafts/draft-list.md и выбрать активный D-NNN. Обязательно:
-  1. Номер черновика и тема: [D-NNN](drafts/D-NNN-тема.md)
-  2. Где остановился: параграф / раздел / последний написанный тезис
-  3. Сколько времени сегодня и на что именно
-  4. TTL истекает? (из «Требует внимания» предыдущего DayPlan)
-  Минимум: одна строка в таблице плана + эта секция с D-NNN. -->
-
-**Активный черновик:** <!-- PENDING: [D-NNN](drafts/D-NNN-тема.md) -->
-**Где остановился:** <!-- PENDING: раздел/параграф/последний тезис -->
-**Сегодня:** <!-- PENDING: X мин/h — на что именно (ревью / дописать / структурировать) -->
-
-<!-- PENDING: daily_practice — если есть активная ежедневная практика с дневным слотом (марафон/привычка, например personal/<практика>/), заполнить блок ниже из её данных (журнал/трекер практики, если есть). Нет активной практики → блок (включая заголовок «Практика дня») не выводить вовсе. -->
-
-**Практика дня:** <!-- PENDING: название практики -->
-
-| Слот | Сделал? | Что делал | Новое впечатление | Отбой |
-|------|---------|-----------|--------------------|-------|
-| <!-- PENDING: HH:MM --> | ⬜ | | | |
-
-**Stop-moments (внимание/фокус):** <!-- PENDING: 1-3 момента за день, формат "stop: [делал] → [отвлекло] → [куда ушло]" -->
+$SELF_DEV_BLOCK
 
 </details>
 
@@ -877,7 +1162,7 @@ generated_by: day-open-scaffold.sh (WP-264 Ф2)
 
 После priorities.yaml — дополнить из carry-over и SWEEP_WP_LIST теми РП, которых нет в priorities.yaml и которые ещё open.
 Применить mandatory_daily_wps + daily_checkpoint_wps из day-rhythm-config.yaml.
-KE-строка: bash $IWE/${IWE_GOVERNANCE_REPO:-DS-strategy}/scripts/ke-queue-stats.sh --dayplan-row (реальный бюджет, не литерал «1h»).
+KE-строка: bash $TEMPLATE_SCRIPTS_DIR/ke-queue-stats.sh --dayplan-row (реальный бюджет, не литерал «1h»).
 Active WPs to include (из sweep + WeekPlan union): $SWEEP_WP_LIST
 -->
 
@@ -906,23 +1191,22 @@ ${DAY_CLOSE_CARRY_OVER:-нет (Day Close не найден)}
 <details>
 <summary><b>Разбор заметок</b></summary>
 
-<!-- PENDING: notes_review — категоризация fleeting-notes.md (НЭП/Задача/Черновик/Знание/Шум) или carry-over из вчерашнего Note-Review коммита. Каждая заметка — markdown-ссылка с якорем на заголовок: [«текст заметки»](inbox/fleeting-notes.md#якорь-заголовка). Якорь = текст заголовка в нижнем регистре, пробелы → дефисы, без эмодзи. См. SKILL.md шаг 1c. -->
+<!-- Источник: inbox/fleeting-notes.md. Строки **Title** = непрочитанные. Ссылки без якоря — bold не создаёт GitHub-якорей. -->
 
 | Заметка | Тип | Предложение | ✅ |
 |---------|-----|-------------|---|
-| [<!-- PENDING -->](../inbox/fleeting-notes.md#якорь-заметки) | — | — | [ ] |
+$(render_fleeting_notes)
 
 </details>
 
 <details>
 <summary><b>Календарь ($DAY_NUM $MONTH_RU)</b></summary>
 
-<!-- PENDING: calendar — вызвать mcp__ext-google-calendar__list-events для calendar_ids:
-  - Календарь Церен: i0f6eu8fnpt912c38glhgokfkg@group.calendar.google.com
-  - IWE Platform Ops: 0b141e8bb8367d75b444ae2595ff9d6575095aeaf04da1969fb716300e94bd53@group.calendar.google.com
-  - primary: tserenov72@gmail.com
-  timeMin=$DATE 00:00 МСК, timeMax=$DATE 23:59 МСК.
-  Показать ВСЕ события дня, включая платформенные напоминания из IWE Platform Ops.
+<!-- PENDING: calendar — сначала вызвать mcp__ext-google-calendar__list-calendars,
+  чтобы получить собственные calendar_ids пилота (свои календари + подключённые
+  общие), затем mcp__ext-google-calendar__list-events для каждого найденного ID
+  с timeMin=$DATE 00:00 МСК, timeMax=$DATE 23:59 МСК.
+  Показать ВСЕ события дня по всем найденным календарям.
   Формат: таблица + строка свободных блоков ≥1h. -->
 
 | Время (МСК) | Событие | Длит. | Связь с РП |
@@ -940,7 +1224,7 @@ $(render_bot_qa)
 
 **IWE за ночь (светофор):**
 
-$(render_iwe_status)
+$IWE_STATUS_TABLE
 
 **Новые задачи в репозиториях (за 2 дня):**
 
@@ -991,7 +1275,7 @@ $(render_content_cleanup)
 
 </details>
 
-$(render_world)
+$WORLD_SECTION
 
 <details>
 <summary><b>Контекст недели (W$WEEK_NUM)</b></summary>
@@ -1001,13 +1285,6 @@ $(render_world)
 **Горлышко недели (SC-first, $DATE):** <!-- PENDING -->
 
 <!-- PENDING: week_context — фокус недели + текущий бюджет/мультипликатор + ТОС. Источник: ${IWE_GOVERNANCE_REPO:-DS-strategy}/current/WeekPlan W$WEEK_NUM*.md. -->
-
-</details>
-
-<details>
-<summary><b>Активные РП</b></summary>
-
-$SWEEP_WP_FULL
 
 </details>
 
@@ -1035,8 +1312,7 @@ $(render_video)
 <details>
 <summary><b>Требует внимания</b></summary>
 
-<!-- PENDING: attention — собрать из: (1) carry-over WP, (2) IWE-светофор 🟡/🔴, (3) Scout не проверен, (4) обновления Base/IWE, (5) urgent feedback бота, (6) застрявшие заметки, (7) Мир без URL-ссылок, (8) Scheduler/триаж 🔴 (Mode A автоматически создаёт INCIDENT-файл), (9) KE-SLA 🔴 при oldest ≥3д, (10) Орг-сигналы R31 — прочитать ${IWE_GOVERNANCE_REPO:-DS-strategy}/current/orgdev-signals.md и инжектить строки с ⚠ статусом (WP-377 Ф2.7). Если пусто — написать «—» или удалить секцию. -->
-<!-- PENDING: self-check world — если секция «Мир» не содержит «](http» → добавить пункт: «🔴 Мир: данные без источников — требуется ручное заполнение URL» -->
+$(render_attention)
 
 </details>
 

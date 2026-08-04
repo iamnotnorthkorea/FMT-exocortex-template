@@ -4,7 +4,7 @@
 
 ## Контекст
 
-- Планы: {{WORKSPACE_DIR}}/{{GOVERNANCE_REPO}}/current/
+- Планы: /d/iwe/{{GOVERNANCE_REPO}}/current/
 
 ## Алгоритм
 

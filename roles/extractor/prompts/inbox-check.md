@@ -22,18 +22,18 @@
 
 ### Шаг 0: Прочитать конфигурацию
 
-1. Прочитай `{{WORKSPACE_DIR}}/FMT-exocortex-template/roles/extractor/config/routing.md` — таблицы маршрутизации.
-2. Прочитай `{{WORKSPACE_DIR}}/{{GOVERNANCE_REPO}}/inbox/feedback-log.md` — лог отклонённых кандидатов (пишет R15 через /apply-captures). Если capture похож на ранее отклонённый → пропусти. Если файл не существует — продолжай без него.
+1. Прочитай `/d/iwe/FMT-exocortex-template/roles/extractor/config/routing.md` — таблицы маршрутизации.
+2. Прочитай `/d/iwe/{{GOVERNANCE_REPO}}/inbox/feedback-log.md` — лог отклонённых кандидатов (пишет R15 через /apply-captures). Если capture похож на ранее отклонённый → пропусти. Если файл не существует — продолжай без него.
 
 ### Шаг 1: Проверить inbox (WP-247 Ф-MULTI-SOURCE.3 — два канала)
 
-1. Прочитай `{{WORKSPACE_DIR}}/{{GOVERNANCE_REPO}}/inbox/captures.md` — основной inbox
-2. Прочитай `{{WORKSPACE_DIR}}/{{GOVERNANCE_REPO}}/inbox/fleeting-notes.md` — secondary inbox (быстрые мысли пользователя). Файл может отсутствовать — пропусти.
+1. Прочитай `/d/iwe/{{GOVERNANCE_REPO}}/inbox/captures.md` — основной inbox
+2. Прочитай `/d/iwe/{{GOVERNANCE_REPO}}/inbox/fleeting-notes.md` — secondary inbox (быстрые мысли пользователя). Файл может отсутствовать — пропусти.
 3. Найди все pending записи в обоих файлах: секции `### ...` БЕЗ любого из 4 маркеров статуса на той же строке (`[analyzed]`, `[processed]`, `[duplicate]`, `[defer]`). Если стоит хоть один — capture уже в workflow, пропускай.
 
    **Источники различай:** при формализации в Шаге 2 укажи в кандидате `source_file: captures.md` или `source_file: fleeting-notes.md`. Это нужно R15 для пометки правильного файла маркером `[analyzed]` после accept.
 
-4. Если pending записей нет → сообщение `No pending captures in inbox` выводи через stdout (его поймает `extractor.sh` и запишет в `{{HOME_DIR}}/logs/extractor/YYYY-MM-DD.log`). **НЕ создавай отдельный лог-файл** в `{{GOVERNANCE_REPO}}/` или где-либо ещё. Заверши работу.
+4. Если pending записей нет → сообщение `No pending captures in inbox` выводи через stdout (его поймает `extractor.sh` и запишет в `/c/Users/Татьяна/logs/extractor/YYYY-MM-DD.log`). **НЕ создавай отдельный лог-файл** в `{{GOVERNANCE_REPO}}/` или где-либо ещё. Заверши работу.
 5. Если pending > 5 → возьми первые 5 (по порядку: сначала captures.md, потом fleeting-notes.md)
 
 ### Шаг 2: Обработать каждый capture (max 5)
@@ -74,7 +74,7 @@
 
 ### Шаг 3: Сгенерировать Extraction Report
 
-Создай файл отчёта: `{{WORKSPACE_DIR}}/{{GOVERNANCE_REPO}}/inbox/extraction-reports/{YYYY-MM-DD}-inbox-check.md`
+Создай файл отчёта: `/d/iwe/{{GOVERNANCE_REPO}}/inbox/extraction-reports/{YYYY-MM-DD}-inbox-check.md`
 
 Если файл с таким именем уже существует, добавь суффикс: `{YYYY-MM-DD}-inbox-check-2.md`.
 

@@ -20,7 +20,7 @@ export PYTHONUTF8=1
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 # #169: scheduler.sh зовёт notify.sh из FMT (read-only), а FMT-шаблоны держат неразрешённые
-# {{WORKSPACE_DIR}}/{{GOVERNANCE_REPO}} → путь к DayPlan не резолвится, сообщение пустое.
+# /d/iwe/{{GOVERNANCE_REPO}} → путь к DayPlan не резолвится, сообщение пустое.
 # Берём шаблоны из .iwe-runtime, куда build-runtime.sh подставил реальные пути
 # (runtime-overlay.yaml: templates/*.sh в списке substituted). Якорь: IWE_RUNTIME → IWE_WORKSPACE → $HOME/IWE.
 RUNTIME_TEMPLATES="${IWE_RUNTIME:-${IWE_WORKSPACE:-$HOME/IWE}/.iwe-runtime}/roles/synchronizer/scripts/templates"

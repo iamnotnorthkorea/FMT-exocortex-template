@@ -30,13 +30,13 @@
 ```markdown
 | Домен | Pack | Префикс | Путь |
 |-------|------|---------|------|
-| Мой домен | PACK-my-domain | MD | {{WORKSPACE_DIR}}/PACK-my-domain/pack/my-domain/ |
+| Мой домен | PACK-my-domain | MD | /d/iwe/PACK-my-domain/pack/my-domain/ |
 ```
 
 ### 2. (Опционально) Установи автоматический inbox-check
 
 ```bash
-cd {{WORKSPACE_DIR}}/FMT-exocortex-template/roles/extractor
+cd /d/iwe/FMT-exocortex-template/roles/extractor
 bash install.sh
 ```
 

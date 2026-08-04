@@ -63,8 +63,8 @@ Git: закоммичен и запушен ✅
 
 ## Источники
 
-- **Skill (primary):** `{{WORKSPACE_DIR}}/.claude/skills/month-close/SKILL.md`
-- **WeekPlans:** `{{WORKSPACE_DIR}}/{{GOVERNANCE_REPO}}/archive/week-plans/WeekPlan W*.md`
-- **Strategy:** `{{WORKSPACE_DIR}}/{{GOVERNANCE_REPO}}/docs/Strategy.md`
-- **MEMORY:** `{{WORKSPACE_DIR}}/{{GOVERNANCE_REPO}}/memory/MEMORY.md`
-- **Protocol:** `{{WORKSPACE_DIR}}/{{GOVERNANCE_REPO}}/memory/protocol-month-close.md` (если есть)
+- **Skill (primary):** `/d/iwe/.claude/skills/month-close/SKILL.md`
+- **WeekPlans:** `/d/iwe/{{GOVERNANCE_REPO}}/archive/week-plans/WeekPlan W*.md`
+- **Strategy:** `/d/iwe/{{GOVERNANCE_REPO}}/docs/Strategy.md`
+- **MEMORY:** `/d/iwe/{{GOVERNANCE_REPO}}/memory/MEMORY.md`
+- **Protocol:** `/d/iwe/{{GOVERNANCE_REPO}}/memory/protocol-month-close.md` (если есть)

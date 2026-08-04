@@ -65,8 +65,14 @@ fi
 mkdir -p "$DRAFT_DIR"
 
 # Вычисляем даты Пн-Вс текущей ISO-недели
-MON_DATE=$(date -v-$(($(date +%u)-1))d +%Y-%m-%d 2>/dev/null || date -d "monday this week" +%Y-%m-%d)
-SUN_DATE=$(date -v+$((7-$(date +%u)))d +%Y-%m-%d 2>/dev/null || date -d "sunday this week" +%Y-%m-%d)
+# Баг-фикс 24.07: "monday this week"/"sunday this week" в GNU date не якорятся на текущую
+# календарную неделю — это "следующее вхождение дня недели", которое зависит от того, прошёл
+# ли этот день недели уже сегодня. В пятницу (%u=5) Пн (день 1) уже прошёл → "monday this week"
+# прыгает на СЛЕДУЮЩИЙ понедельник, а Вс (день 7) ещё не наступило → "sunday this week" остаётся
+# в ТЕКУЩЕЙ неделе — на выходе несогласованный диапазон (напр. «27-26 июля», Пн из будущей недели
+# + Вс из текущей). Фикс: то же смещение в днях от сегодня, что уже верно работает в ветке -v (BSD).
+MON_DATE=$(date -v-$(($(date +%u)-1))d +%Y-%m-%d 2>/dev/null || date -d "today - $(($(date +%u)-1)) days" +%Y-%m-%d)
+SUN_DATE=$(date -v+$((7-$(date +%u)))d +%Y-%m-%d 2>/dev/null || date -d "today + $((7-$(date +%u))) days" +%Y-%m-%d)
 
 # issue #155: || fallback на GNU date (Linux) — иначе date -j падает, 2>/dev/null глушит, день пустой
 MON_DAY=$(date -j -f %Y-%m-%d "$MON_DATE" +%d 2>/dev/null || date -d "$MON_DATE" +%d 2>/dev/null); MON_DAY=${MON_DAY#0}
@@ -78,7 +84,9 @@ DOW_RU=("Пн" "Вт" "Ср" "Чт" "Пт" "Сб" "Вс")
 TABLE_ROWS=""
 for i in 0 1 2 3 4 5 6; do
   day_date=$(date -v+${i}d -j -f %Y-%m-%d "$MON_DATE" +%Y-%m-%d 2>/dev/null || date -d "$MON_DATE + $i days" +%Y-%m-%d)
-  day_num=$(date -j -f %Y-%m-%d "$day_date" +%d 2>/dev/null | sed 's/^0//' || date -d "$day_date" +%d | sed 's/^0//')
+  # issue #245: `||` за пайпом на sed не срабатывал, если падал только `date -j` (GNU date) —
+  # sed на пустом вводе завершается успешно, поэтому фолбэк никогда не запускался.
+  day_num=$(date -j -f %Y-%m-%d "$day_date" +%d 2>/dev/null || date -d "$day_date" +%d 2>/dev/null); day_num=${day_num#0}
   TABLE_ROWS="${TABLE_ROWS}| ${DOW_RU[$i]} ${day_num} | | | | | |"$'\n'
 done
 

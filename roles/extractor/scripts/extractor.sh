@@ -18,7 +18,7 @@ REPO_DIR="$(dirname "$SCRIPT_DIR")"
 
 # Guard: сырой файл в FMT-exocortex-template никогда не подставляет плейсхолдеры
 # (build-runtime.sh подставляет их только в собранную копию под .iwe-runtime/).
-# Запуск отсюда напрямую тихо создаёт директории с буквальным именем "{{HOME_DIR}}"
+# Запуск отсюда напрямую тихо создаёт директории с буквальным именем "/c/Users/Татьяна"
 # (bug-2026-07-02-home-dir-placeholder-literal-directory.md).
 case "$SCRIPT_DIR" in
     */FMT-exocortex-template/roles/extractor/scripts)
@@ -28,7 +28,8 @@ case "$SCRIPT_DIR" in
         ;;
 esac
 
-WORKSPACE="{{WORKSPACE_DIR}}"
+# WP-273 0.29.4 R6.1 fix (issue #271): runtime-резолв вместо build-time /d/iwe — как в strategist.sh.
+WORKSPACE="${IWE_WORKSPACE:-$HOME/IWE}"
 
 # PROMPTS_DIR резолв: $IWE_TEMPLATE → standard FMT → relative (legacy)
 if [ -n "${IWE_TEMPLATE:-}" ] && [ -d "$IWE_TEMPLATE/roles/extractor/prompts" ]; then
@@ -41,9 +42,17 @@ else
     echo "[$(date '+%H:%M:%S')] WARN: legacy PROMPTS_DIR fallback на $PROMPTS_DIR (pre-WP-273). Запустите migrate-to-runtime-target.sh." >&2
 fi
 
-LOG_DIR="{{HOME_DIR}}/logs/extractor"
-CLAUDE_PATH="{{CLAUDE_PATH}}"
-ENV_FILE="{{HOME_DIR}}/.config/aist/env"
+LOG_DIR="$HOME/logs/extractor"
+if [ -n "${CLAUDE_CLI_PATH:-}" ]; then
+    CLAUDE_PATH="$CLAUDE_CLI_PATH"
+elif command -v claude &>/dev/null; then
+    CLAUDE_PATH="$(command -v claude)"
+elif [ -x "$HOME/.npm-global/bin/claude" ]; then
+    CLAUDE_PATH="$HOME/.npm-global/bin/claude"
+else
+    CLAUDE_PATH="{{CLAUDE_PATH}}"  # fallback: build-runtime должен был подставить
+fi
+ENV_FILE="$HOME/.config/aist/env"
 
 # AI CLI: переопределение через переменные окружения (см. strategist.sh)
 AI_CLI="${AI_CLI:-$CLAUDE_PATH}"
@@ -159,9 +168,23 @@ $extra_args"
     log "Completed process: $command_file"
 
     # Commit + push changes (отчёты, помеченные captures)
-    local strategy_dir="$WORKSPACE/{{GOVERNANCE_REPO}}"
+    local strategy_dir="$WORKSPACE/${IWE_GOVERNANCE_REPO:-DS-strategy}"
 
     if [ -d "$strategy_dir/.git" ]; then
+        # WP-429 Ф6.5: пре-фильтры на новых extraction-reports ДО commit — advisory,
+        # не блокирует (WP-429 паттерн: детектор предлагает, не правит; решение по
+        # находке — R15 на /apply-captures). Только реально новые (untracked) отчёты
+        # этого прогона, не весь каталог — иначе шумит на старых уже прошедших отчётах.
+        local prefilter_script="$SCRIPT_DIR/wp429-extractor-prefilters.py"
+        if [ -f "$prefilter_script" ] && command -v python3 >/dev/null 2>&1; then
+            local new_report
+            for new_report in $(git -C "$strategy_dir" ls-files --others --exclude-standard -- inbox/extraction-reports/ 2>/dev/null); do
+                python3 "$prefilter_script" --report "$strategy_dir/$new_report" >> "$LOG_FILE" 2>&1 \
+                    && log "Pre-filters clean: $new_report" \
+                    || log "Pre-filters found signals (advisory): $new_report — см. $LOG_FILE"
+            done
+        fi
+
         # Очистить staging area
         git -C "$strategy_dir" reset --quiet 2>/dev/null || true
 
@@ -203,7 +226,7 @@ case "$1" in
         fi
 
         # Быстрая проверка: есть ли captures в inbox
-        CAPTURES_FILE="$WORKSPACE/{{GOVERNANCE_REPO}}/inbox/captures.md"
+        CAPTURES_FILE="$WORKSPACE/${IWE_GOVERNANCE_REPO:-DS-strategy}/inbox/captures.md"
         if [ -f "$CAPTURES_FILE" ]; then
             # WP-7 Ф-EXTRACTOR-FP fix (2026-05-08): grep '^### ' ловил все subheading'и,
             # включая subsections (### Суть / ### Релевантность) внутри analyzed-capture'ов.

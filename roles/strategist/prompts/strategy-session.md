@@ -3,10 +3,10 @@
 
 ## Контекст
 
-- **HUB (личные планы):** {{WORKSPACE_DIR}}/{{GOVERNANCE_REPO}}/current/
-- **Документы стратегии:** {{WORKSPACE_DIR}}/{{GOVERNANCE_REPO}}/docs/ (Strategy.md, Dissatisfactions.md, Session Agenda.md)
-- **Inbox:** {{WORKSPACE_DIR}}/{{GOVERNANCE_REPO}}/inbox/
-- **SPOKE (планы репо):** {{WORKSPACE_DIR}}/*/WORKPLAN.md
+- **HUB (личные планы):** /d/iwe/{{GOVERNANCE_REPO}}/current/
+- **Документы стратегии:** /d/iwe/{{GOVERNANCE_REPO}}/docs/ (Strategy.md, Dissatisfactions.md, Session Agenda.md)
+- **Inbox:** /d/iwe/{{GOVERNANCE_REPO}}/inbox/
+- **SPOKE (планы репо):** /d/iwe/*/WORKPLAN.md
 - **MEMORY:** ~/.claude/projects/{{CLAUDE_PROJECT_SLUG}}/memory/MEMORY.md
 
 ## Предусловие
@@ -22,16 +22,15 @@
 
 - Проверь: сегодня — первая Strategy Session в текущем месяце? (Признак: дата сессии ≤7 числа месяца И в `{{GOVERNANCE_REPO}}/sessions/` нет записи Strategy Session с этого месяца)
 - Если да:
-  1. Найди последний `{{WORKSPACE_DIR}}/{{GOVERNANCE_REPO}}/archive/MonthClose YYYY-MM.md` (за прошлый месяц)
+  1. Найди последний `/d/iwe/{{GOVERNANCE_REPO}}/archive/MonthClose YYYY-MM.md` (за прошлый месяц)
   2. Прочитай ОБЯЗАТЕЛЬНО ДО шага 1: мультипликатор, фаза, калибр, ревизия проектов, инсайты решений, R-вопросник, carry-over
-  3. Прочитай `{{WORKSPACE_DIR}}/{{GOVERNANCE_REPO}}/archive/multiplier-trend.md` (если есть) для динамики
+  3. Прочитай `/d/iwe/{{GOVERNANCE_REPO}}/archive/multiplier-trend.md` (если есть) для динамики
   4. Используй эти данные как контекст при стратегической сверке (шаг 5) и формировании плана (шаг 6)
 - Если нет (вторая+ сессия месяца) — пропусти, переходи к шагу 1
 
 #### 1. Открытие сессии
 
 - Найди `WeekPlan W*.md` со `status: draft` в `{{GOVERNANCE_REPO}}/current/`
-- **Loop C input (WP-364 Ф2.2):** проверь `{{WORKSPACE_DIR}}/{{GOVERNANCE_REPO}}/current/weekly-digest.md`. Если файл есть и `valid_until ≥ today` — прочитай его как **supplementary input от Аналитика**: коммиты недели, закрытые РП, кандидаты bottleneck'а. Стратег (пилот) не обязан следовать кандидатам — это сырьё для собственного решения. Если файла нет или просрочен — пропусти этот пункт, работай по черновику и истории.
 - Покажи пользователю краткую сводку: повестка, ключевые вопросы, carry-over
 - Если сегодня первая сессия месяца — также упомяни ключевые цифры из MonthClose (мультипликатор, фаза, ✅/🔄 R)
 - Спроси: «Начнём по повестке или есть срочные вопросы?»
@@ -65,9 +64,9 @@
 
 > Реализует Фазу 2b метода `PD.METHOD.008` (стратегирование). Алгоритм рекомендации Стратегом — `PD.METHOD.018` § Механизм рекомендации Стратегом. Различение C_vis vs C_act — `PD.FORM.091 §6.1`.
 
-1. **Прочитай трекер:** `{{WORKSPACE_DIR}}/{{GOVERNANCE_REPO}}/docs/Caliber-artifacts-tracker.md` (если файла нет — создай из шаблона `{{WORKSPACE_DIR}}/FMT-exocortex-template/templates/strategy-skeleton/docs/Caliber-artifacts-tracker.md`)
+1. **Прочитай трекер:** `/d/iwe/{{GOVERNANCE_REPO}}/docs/Caliber-artifacts-tracker.md` (если файла нет — создай из шаблона `/d/iwe/FMT-exocortex-template/templates/strategy-skeleton/docs/Caliber-artifacts-tracker.md`)
 2. **Измерь C_vis:** max системный уровень в `Dissatisfactions.md` с фильтром «≥2 НЭП на уровне» (одиночный НЭП на высоком уровне = сигнал, не калибр видения)
-3. **Измерь C_act:** max уровень охвата (`PD.FORM.090`) с lifework-документом, действующим ≥6 мес. Читай из `{{WORKSPACE_DIR}}/{{GOVERNANCE_REPO}}/Lifework/` (там живут личные документы). Если папки нет или пуста — C_act=0, рекомендуй создать Личный устав (уровень 1) первым, взяв шаблон из `PACK-personal/.../lifework-templates/lifework-self-charter-template.md`
+3. **Измерь C_act:** max уровень охвата (`PD.FORM.090`) с lifework-документом, действующим ≥6 мес. Читай из `/d/iwe/{{GOVERNANCE_REPO}}/Lifework/` (там живут личные документы). Если папки нет или пуста — C_act=0, рекомендуй создать Личный устав (уровень 1) первым, взяв шаблон из `PACK-personal/.../lifework-templates/lifework-self-charter-template.md`
 4. **Объяви разрыв:** «C_vis=N, C_act=M, зона роста = [M+1..N]»
 5. **Проверь минимально полный пакет уровня C_act** (`PD.FORM.090 §6`): все ли инварианты уровней 1..C_act присутствуют? Поломки внизу → рекомендация «догнать вниз», STOP здесь (приоритет, поломка наверху = обрыв снизу)
 6. **Двойной gate для подъёма:** активируй рекомендацию уровня C_act+1 ТОЛЬКО если: (а) пакет C_act полный + действует ≥6 мес; (б) ступень мастерства ≥3 (`PD.FORM.080`). Иначе фокус на текущем уровне, не предлагать рост

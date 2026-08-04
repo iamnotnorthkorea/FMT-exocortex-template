@@ -41,7 +41,7 @@ If you discover a discrepancy (file doesn't match plan, stale content, inconsist
 
 ## Working Directory
 
-`{{HOME_DIR}}/IWE/`
+`/c/Users/Татьяна/IWE/`
 
 ## WP Context Scope — Umbrella РП
 
@@ -115,7 +115,7 @@ git commit -m "feat: description" --trailer "Co-Authored-By: Hermes <noreply@nou
 ## IWE Instructions Level (Kimi headless)
 
 # IWE workspace with 5000+ docs and multiple Packs — use experienced level.
-# Revisit if a new small repo (< 1000 docs) is added to {{HOME_DIR}}/IWE/.
+# Revisit if a new small repo (< 1000 docs) is added to /c/Users/Татьяна/IWE/.
 When calling `get_instructions` (Aisystant MCP) to load IWE context,
 use `level="experienced"` instead of the default `level="full"`.
 This reduces token load by ~89% (~10K → ~1.1K) on every headless turn.

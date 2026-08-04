@@ -6,11 +6,11 @@ Wants=network-online.target
 [Service]
 Type=oneshot
 ExecStart={{IWE_RUNTIME}}/roles/strategist/scripts/strategist.sh morning
-Environment=HOME={{HOME_DIR}}
+Environment=HOME=/c/Users/Татьяна
 Environment=IWE_TEMPLATE={{IWE_TEMPLATE}}
-Environment=IWE_WORKSPACE={{WORKSPACE_DIR}}
+Environment=IWE_WORKSPACE=/d/iwe
 Environment=IWE_RUNTIME={{IWE_RUNTIME}}
 Environment=IWE_GOVERNANCE_REPO={{GOVERNANCE_REPO}}
 Environment=PATH=/usr/local/bin:/usr/bin:/bin:%h/.local/bin
-StandardOutput=append:{{HOME_DIR}}/logs/strategist/systemd-morning.log
-StandardError=append:{{HOME_DIR}}/logs/strategist/systemd-morning-error.log
+StandardOutput=append:/c/Users/Татьяна/logs/strategist/systemd-morning.log
+StandardError=append:/c/Users/Татьяна/logs/strategist/systemd-morning-error.log

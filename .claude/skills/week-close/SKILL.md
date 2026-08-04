@@ -43,9 +43,9 @@ Week Close = протокол. Исполнять ТОЛЬКО пошагово 
 
 **Коммиты:**
 ```bash
-for repo in $(ls {{WORKSPACE_DIR}}/); do
-  if [ -d {{WORKSPACE_DIR}}/$repo/.git ]; then
-    commits=$(git -C {{WORKSPACE_DIR}}/$repo log --since="last monday 00:00" --until="today 00:00" --oneline --no-merges 2>/dev/null)
+for repo in $(ls /d/iwe/); do
+  if [ -d /d/iwe/$repo/.git ]; then
+    commits=$(git -C /d/iwe/$repo log --since="last monday 00:00" --until="today 00:00" --oneline --no-merges 2>/dev/null)
     [ -n "$commits" ] && echo "=== $repo ===" && echo "$commits"
   fi
 done
@@ -53,7 +53,7 @@ done
 
 **Календарь недели:**
 ```bash
-bash {{WORKSPACE_DIR}}/scripts/server-calendar.sh --week $(date -v-mon +%Y-%m-%d 2>/dev/null || date -d "last monday" +%Y-%m-%d)
+bash /d/iwe/scripts/server-calendar.sh --week $(date -v-mon +%Y-%m-%d 2>/dev/null || date -d "last monday" +%Y-%m-%d)
 ```
 Сверить запланированные встречи/задачи с фактом: что состоялось, что перенеслось, что отменилось. Для задач с отчётами (🔧 backup stress-test и т.п.) — проверить наличие артефакта.
 
@@ -75,8 +75,9 @@ bash {{WORKSPACE_DIR}}/scripts/server-calendar.sh --week $(date -v-mon +%Y-%m-%d
 - Completion rate: X/Y РП (N%)
 - Коммитов всего, активных дней
 - WakaTime итог недели (физическое время)
-- Бюджет закрыт (сумма done × бюджет + partial × % × бюджет)
+- Бюджет закрыт (сумма done × бюджет + partial % × бюджет)
 - Мультипликатор недели = Бюджет закрыт / WakaTime
+- **Калибровка гипотез (WP-496, из шага 6a):** сверено N записей за неделю; из них с уверенностью ≥80% — доля подтвердившихся (порог: ≥0.9 от заявленной уверенности, иначе «уверенность завышена» — явно отметить в WeekReport). Если сверок не было на этой неделе — не считать, пропустить строку.
 
 ### 5. Carry-over → W+1
 
@@ -90,7 +91,7 @@ bash {{WORKSPACE_DIR}}/scripts/server-calendar.sh --week $(date -v-mon +%Y-%m-%d
 bash ${IWE_SCRIPTS}/pending-phases-sweep.sh
 ```
 
-Скрипт обходит все `{{WORKSPACE_DIR}}/{{GOVERNANCE_REPO}}/inbox/WP-*.md` со `status: in_progress` (или без явного status), извлекает строки Ф-таблицы со статусом `⏳ pending` / `pending`, выводит сводку формата:
+Скрипт обходит все `/d/iwe/{{GOVERNANCE_REPO}}/inbox/WP-*.md` со `status: in_progress` (или без явного status), извлекает строки Ф-таблицы со статусом `⏳ pending` / `pending`, выводит сводку формата:
 
 ```
 WP-NNN: pending-фазы (M):
@@ -100,13 +101,25 @@ WP-NNN: pending-фазы (M):
 
 Для каждой pending-фазы решить: **(a)** делать на этой неделе → добавить в W{N+1} как явный пункт; **(b)** переоценить (блокер? устарела?); **(c)** оставить как есть (если ожидание внешнего события — записать ожидаемый триггер).
 
-Если скрипта нет — fallback: `grep -l "status: in_progress" {{WORKSPACE_DIR}}/{{GOVERNANCE_REPO}}/inbox/WP-*.md` → для каждого `grep -E "⏳.*pending|Ф[0-9]+.*pending"`.
+Если скрипта нет — fallback: `grep -l "status: in_progress" /d/iwe/{{GOVERNANCE_REPO}}/inbox/WP-*.md` → для каждого `grep -E "⏳.*pending|Ф[0-9]+.*pending"`.
 
 ### 6. Captures и уроки
 
 - Просмотреть `inbox/fleeting-notes.md` за неделю → маршрутизировать невыключенные.
 - Уроки сессий → MEMORY.md + thematic `lessons_*.md` (если есть).
 - Drift-scan недели: что в MEMORY.md устарело за 7 дней.
+- **Проверка полноты переноса перед архивацией (WP-5, 2026-07-10):** `bash {{IWE_SCRIPTS}}/check-wp-transfer-completeness.sh --all {{IWE_ROOT}}` по `inbox/WP-N/` — выводит `results_not_captured`-флаги (проставленные при закрытии без заполненного `results_in`) и файлы в подпапках без учёта в основном контекст-файле. Для каждого warning — пилот решает: (a) действительно нужен перенос знания, найти куда; (b) файл технический/устарел, можно оставить; (c) `results_in` заполнить постфактум. Не блокирует Close.
+
+### 6a. Сверка журнала гипотез (LPF, WP-496)
+
+> Регламент: `memory/lpf-hypothesis-log.md`. Журнал: `{{GOVERNANCE_REPO}}/current/hypotheses-log.md`.
+
+1. Прочитать `hypotheses-log.md` — отфильтровать записи со статусом «на сверке» И датой сверки ≤ сегодня. Записи со статусом «черновик» (не подтверждённые пилотом Note-Review) — пропустить, они не в цикле сверки.
+2. Для каждой найденной записи: сверить критерий фальсификации с доступной фактурой (коммиты недели, `domain_event`, инфраструктурные логи, факты из ретро §3-4 этого протокола).
+3. Предложить вердикт: подтверждена / опровергнута / частично подтверждена / неприменимо (если условие критерия физически не выполнено — например, зависимый артефакт не был доставлен — гипотеза не проверяема, не «опровергнута»).
+4. Пилот утверждает или правит вердикт → записать **новой** записью в конец журнала со ссылкой на исходную (`Сверка H-NNN`). Исходную запись не редактировать.
+5. Для каждого вердикта — явное действие (обновить уверенность на будущее / добавить шаг в чек-лист / завести РП / зафиксировать кандидат в паттерн — §6 Capture-to-Pack). Вердикт без действия = «повисший», не закрывать неделю с повисшими вердиктами.
+6. Если сверенных записей нет — пометить явно «сверка гипотез: 0 записей с наступившей датой» в WeekReport (не пропускать шаг молча).
 
 ### 7. Платформенные шаги
 
@@ -154,7 +167,7 @@ bash ${IWE_SCRIPTS}/memory-bleed.sh
 > Проверка здоровья статической нагрузки контекста. Флаги — информативно, пользователь решает.
 
 ```bash
-echo "=== distinctions.md ===" && wc -l {{WORKSPACE_DIR}}/.claude/rules/distinctions.md
+echo "=== distinctions.md ===" && wc -l /d/iwe/.claude/rules/distinctions.md
 echo "=== MEMORY.md ===" && wc -l {{MEMORY_DIR}}/MEMORY.md
 echo "=== memory/ файлы (mtime >14д) ===" && find {{MEMORY_DIR}} -name "*.md" -mtime +14 -not -name "MEMORY.md" -not -path "*/archive/*" | sort
 ```
@@ -208,7 +221,7 @@ echo "=== Hindsight log (last 20) ===" && cat ~/.iwe/hindsight.log 2>/dev/null |
 ### 11. Закоммитить governance-репо
 
 ```bash
-cd {{WORKSPACE_DIR}}/{{GOVERNANCE_REPO}}
+cd /d/iwe/{{GOVERNANCE_REPO}}
 git status --short
 # НЕ git add -A/git add ./git add -u — AGENTS.md CRITICAL (может захватить работу других агентов)
 # Стейджить ТОЛЬКО файлы, изменённые в шагах 1-10 (в массив для pathspec):

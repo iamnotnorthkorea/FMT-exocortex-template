@@ -15,7 +15,7 @@ consensus: none
 1. **Фактический файл пилота**: `~/.kimi/config.toml` существует и содержит:
    ```toml
    merge_all_available_skills = true
-   extra_skill_dirs = ["{{HOME_DIR}}/IWE/{{IWE_GOVERNANCE_REPO}}/.kimi/skills"]
+   extra_skill_dirs = ["/c/Users/Татьяна/IWE/{{IWE_GOVERNANCE_REPO}}/.kimi/skills"]
    ```
    Это показывает, что Kimi Code действительно использует эти ключи для подключения внешних скиллов.
 

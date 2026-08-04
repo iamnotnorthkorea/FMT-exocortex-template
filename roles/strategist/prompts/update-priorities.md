@@ -71,7 +71,7 @@
 
 ## Источники
 
-- **WeekPlan:** `{{WORKSPACE_DIR}}/{{GOVERNANCE_REPO}}/current/WeekPlan W*.md`
-- **NЭП:** `{{WORKSPACE_DIR}}/{{GOVERNANCE_REPO}}/docs/Dissatisfactions.md`
-- **Backlog:** `{{WORKSPACE_DIR}}/{{GOVERNANCE_REPO}}/inbox/backlog-with-triggers.md`
-- **Red lines:** `{{WORKSPACE_DIR}}/{{GOVERNANCE_REPO}}/docs/Strategy.md` §Red Lines
+- **WeekPlan:** `/d/iwe/{{GOVERNANCE_REPO}}/current/WeekPlan W*.md`
+- **NЭП:** `/d/iwe/{{GOVERNANCE_REPO}}/docs/Dissatisfactions.md`
+- **Backlog:** `/d/iwe/{{GOVERNANCE_REPO}}/inbox/backlog-with-triggers.md`
+- **Red lines:** `/d/iwe/{{GOVERNANCE_REPO}}/docs/Strategy.md` §Red Lines

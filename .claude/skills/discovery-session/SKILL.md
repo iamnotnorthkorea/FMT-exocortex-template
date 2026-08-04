@@ -40,7 +40,7 @@ routing:
 
 ## Шаг 1. Сбор сырья (этап 1 метода)
 
-Прими заметки + рефлексию. Источники: `{{WORKSPACE_DIR}}/{{GOVERNANCE_REPO}}/inbox/`
+Прими заметки + рефлексию. Источники: `/d/iwe/{{GOVERNANCE_REPO}}/inbox/`
 (мимолётные заметки), `docs/Dissatisfactions.md` (накопленное), свободный текст пилота.
 
 Если сырья мало — открытые вопросы (не больше 2-3 за раз):
@@ -119,7 +119,7 @@ routing:
 <разнесение>
 ```
 
-Запиши в `{{WORKSPACE_DIR}}/{{GOVERNANCE_REPO}}/current/monthly-priorities.md` (приоритеты
+Запиши в `/d/iwe/{{GOVERNANCE_REPO}}/current/monthly-priorities.md` (приоритеты
 + ТОС) и/или зафиксируй state-card. Это **контекст приоритетов** для передачи Плановику.
 
 ## Шаг 9. Передача Плановику (handoff)

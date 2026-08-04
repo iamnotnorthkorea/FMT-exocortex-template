@@ -3,7 +3,7 @@
 Перед началом работы — напомнить себе о паттернах косяков:
 
 ```bash
-python3 {{WORKSPACE_DIR}}/{{GOVERNANCE_REPO}}/scripts/agent_fault_remind.py --protocol work --limit 3
+python3 /d/iwe/{{GOVERNANCE_REPO}}/scripts/agent_fault_remind.py --protocol work --limit 3
 ```
 
 🔴-пункты = самые частые ошибки по всем сессиям. Держать в уме на протяжении сессии.

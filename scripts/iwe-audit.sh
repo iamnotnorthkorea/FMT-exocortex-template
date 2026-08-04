@@ -275,12 +275,31 @@ else
     fi
 
     echo ""
+    echo "### Git hooks (core.hooksPath)"
+    echo ""
+    # WP-484 Ф9 (2026-07-23/24): core.hooksPath drifting from .githooks/ once
+    # silently disabled the pre-push force-push guard (WP-436) on a live host —
+    # the "guard exists but isn't wired up" gap stayed invisible until an incident.
+    HOOKS_PATH=$(git -C "$DS_DIR" config --get core.hooksPath 2>/dev/null || echo "")
+    if [ "$HOOKS_PATH" != ".githooks" ]; then
+        if [ -x "$DS_DIR/scripts/install-hooks.sh" ]; then
+            echo "⚠️ \`core.hooksPath\` = \`${HOOKS_PATH:-<не задан>}\`, ожидается \`.githooks\` — pre-push force-push guard (WP-436) может быть отключён. Почини: \`bash \"$DS_DIR/scripts/install-hooks.sh\"\`."
+        else
+            echo "⚠️ \`core.hooksPath\` = \`${HOOKS_PATH:-<не задан>}\`, ожидается \`.githooks\` — pre-push force-push guard (WP-436) может быть отключён. Почини: \`git -C \"$DS_DIR\" config core.hooksPath .githooks\`."
+        fi
+    elif [ ! -x "$DS_DIR/.githooks/pre-push" ]; then
+        echo "⚠️ \`core.hooksPath\` верный, но \`.githooks/pre-push\` отсутствует или не исполняемый."
+    else
+        echo "✅ \`core.hooksPath=.githooks\`, \`pre-push\` guard подключён"
+    fi
+
+    echo ""
     echo "### Diff с FMT-strategy-template"
     echo ""
 
     # Шаблон ищется в двух местах:
-    # (1) {{WORKSPACE_DIR}}/FMT-strategy-template/ — отдельная директория (авторская)
-    # (2) {{WORKSPACE_DIR}}/FMT-exocortex-template/templates/strategy-skeleton/ — внутри FMT (приезжает через update.sh)
+    # (1) /d/iwe/FMT-strategy-template/ — отдельная директория (авторская)
+    # (2) /d/iwe/FMT-exocortex-template/templates/strategy-skeleton/ — внутри FMT (приезжает через update.sh)
     FMT_DIR="$IWE_ROOT/FMT-strategy-template"
     if [ ! -d "$FMT_DIR" ] && [ -d "$IWE_ROOT/FMT-exocortex-template/templates/strategy-skeleton" ]; then
         FMT_DIR="$IWE_ROOT/FMT-exocortex-template/templates/strategy-skeleton"
@@ -316,7 +335,7 @@ echo ""
 # ---------- Раздел 4: User customizations (L3) ----------
 #
 # L3 живёт в 3-х местах: extensions/, params.yaml (отличия от skeleton),
-# AUTHOR-ONLY зоны в .claude/rules/distinctions.md.
+# AUTHOR-ONLY зоны в extensions/*.md.
 # Цель — показать, что после restore личные кастомизации на месте.
 # Это **информационная** секция: отсутствие L3 ≠ failure (новый пилот ещё
 # ничего не настроил). Verdict выносит Аудитор содержательно.
@@ -332,7 +351,7 @@ if [ ! -d "$EXT_DIR" ]; then
     echo "_extensions/ директория отсутствует — расширения не настроены_"
 else
     set +e
-    EXT_FILES=$(find "$EXT_DIR" -maxdepth 1 -type f -name "*.md" ! -name "README.md" 2>/dev/null | sort)
+    EXT_FILES=$(find -L "$EXT_DIR" -maxdepth 1 -type f -name "*.md" ! -name "README.md" 2>/dev/null | sort)
     set -e
     if [ -z "$EXT_FILES" ]; then
         echo "_В extensions/ только README — пользовательских хуков нет_"
@@ -340,12 +359,20 @@ else
         EXT_COUNT=$(printf '%s\n' "$EXT_FILES" | wc -l | tr -d ' ')
         echo "**Найдено хуков:** $EXT_COUNT"
         echo ""
-        echo "| Hook | Размер |"
-        echo "|---|---|"
+        echo "| Hook | Размер | Источник |"
+        echo "|---|---|---|"
         printf '%s\n' "$EXT_FILES" | while read -r ext_file; do
             ext_name=$(basename "$ext_file")
             ext_size=$(wc -l < "$ext_file" | tr -d ' ')
-            printf "| \`%s\` | %s строк |\n" "$ext_name" "$ext_size"
+            # issue #341 п.1: расширения часто держат в governance-репо и линкуют
+            # сюда — молча показывать их как обычный файл скрывает, где на самом
+            # деле живёт кастомизация (важно при разборе после restore/update).
+            if [ -L "$ext_file" ]; then
+                ext_target=$(readlink "$ext_file")
+                printf "| \`%s\` | %s строк | симлинк → \`%s\` |\n" "$ext_name" "$ext_size" "$ext_target"
+            else
+                printf "| \`%s\` | %s строк | файл |\n" "$ext_name" "$ext_size"
+            fi
         done
     fi
 fi
@@ -567,7 +594,7 @@ $IWE_ROOT/.claude
         set +e
         HITS=$(grep -rIl --include='*.sh' --include='*.env' --include='*.service' \
             --include='*.timer' --include='*.json' --include='*.yaml' --include='*.yml' \
-            -e "{{HOME_DIR}}" -e "{{CLAUDE_PROJECT_SLUG}}" \
+            -e "/c/Users/Татьяна" -e "{{CLAUDE_PROJECT_SLUG}}" \
             "$target" 2>/dev/null | head -5)
         set -e
         if [ -n "$HITS" ]; then
@@ -583,7 +610,7 @@ $IWE_ROOT/.claude
     echo ""
 
     if [ $LEAK_COUNT -gt 0 ]; then
-        echo "**Найдено $LEAK_COUNT файлов с macOS-путями.** Решение: заменить на \`\$HOME\`, \`{{HOME_DIR}}\` или \`\$IWE_ROOT\`. Возможные молчаливые сбои в скриптах."
+        echo "**Найдено $LEAK_COUNT файлов с macOS-путями.** Решение: заменить на \`\$HOME\`, \`/c/Users/Татьяна\` или \`\$IWE_ROOT\`. Возможные молчаливые сбои в скриптах."
         OPTIONAL_MISSING=$((OPTIONAL_MISSING + 1))
     else
         echo "✅ macOS-путей не найдено — конфигурация корректна для Linux."

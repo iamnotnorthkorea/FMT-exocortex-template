@@ -18,8 +18,8 @@
 ## Конфигурация
 
 Читай:
-1. `{{WORKSPACE_DIR}}/{{GOVERNANCE_REPO}}/inbox/captures.md` — целевой файл (куда писать)
-2. `{{WORKSPACE_DIR}}/{{GOVERNANCE_REPO}}/inbox/feedback-log.md` — паттерны reject (не предлагай похожее)
+1. `/d/iwe/{{GOVERNANCE_REPO}}/inbox/captures.md` — целевой файл (куда писать)
+2. `/d/iwe/{{GOVERNANCE_REPO}}/inbox/feedback-log.md` — паттерны reject (не предлагай похожее)
 3. Транскрипт сессии (передаётся через `--extra-args` или путь в env)
 4. `git log --since="<session start timestamp>"` всех `~/IWE/*` репо
 
@@ -65,7 +65,7 @@
 
 После записи всех ###-блоков:
 ```bash
-cd {{WORKSPACE_DIR}}/{{GOVERNANCE_REPO}}
+cd /d/iwe/{{GOVERNANCE_REPO}}
 git add inbox/captures.md
 git commit -m "feed(session-close): N capture-кандидатов из сессии YYYY-MM-DD"
 ```
@@ -90,4 +90,4 @@ Types: distinction=X, method=Y, sota=Z
 Source: transcript ({minutes}min session) + git diff ({N} commits)
 ```
 
-Лог попадёт в `{{HOME_DIR}}/logs/extractor/{date}.log`. Пользователь не получает уведомление до следующего `/apply-captures`.
+Лог попадёт в `/c/Users/Татьяна/logs/extractor/{date}.log`. Пользователь не получает уведомление до следующего `/apply-captures`.

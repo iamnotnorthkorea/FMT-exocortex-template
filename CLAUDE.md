@@ -114,7 +114,7 @@ git add path/to/specific-file.md   # correct
 ## Drift Reporting
 Discrepancy found в†’ **Report to pilot, do not silently fix.** "Found drift: [what] in [file]. Fix?" Fix only if instructed.
 ## Working Directory
-`{{HOME_DIR}}/IWE/`
+`/c/Users/Татьяна/IWE/`
 ## Status Reporting
 Start: `agent_status_update(agent=claude-code, status=working, task=..., files=[...])`. Done: `status=idle`. Team repo: add `repo="org/repo-name"`. Fail-safe: Stop-С…СѓРє в†’ `scripts/agent-status-report.sh`.
 ## WP-REGISTRY Naming вЂ” CRITICAL
