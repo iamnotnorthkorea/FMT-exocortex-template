@@ -3,6 +3,14 @@
 # Install: git config core.hooksPath .githooks
 # See: docs/PLATFORM-COMPAT.md
 
+# Windows/Git Bash: python3 inherits the console codepage (e.g. cp1251) for
+# stdout by default, which crashes every python3 helper this hook calls
+# (check-manifest-coverage.py, generate-diagnose-iwe-skill.py) on the emoji
+# they print (✅/❌). Force UTF-8 so the hook behaves identically on
+# macOS/Linux/Windows — see bug-2026-09-04-check-manifest-coverage-cp1251.md.
+export PYTHONIOENCODING="utf-8"
+export PYTHONUTF8="1"
+
 ISSUES=0
 
 # === Block secrets file from being committed ===

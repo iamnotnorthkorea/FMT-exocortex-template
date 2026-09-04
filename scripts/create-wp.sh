@@ -28,6 +28,13 @@
 
 set -uo pipefail
 
+# Windows/Git Bash: python3 inherits the console codepage (e.g. cp1251) for
+# stdout by default, which crashes on the emoji used in this script's
+# inline python helpers (UnicodeEncodeError on ⚠️/❌/✅). Force UTF-8 so the
+# same script behaves identically on macOS/Linux/Windows.
+export PYTHONIOENCODING="utf-8"
+export PYTHONUTF8="1"
+
 IWE="${IWE_ROOT:-$HOME/IWE}"
 
 # --- Определить governance-репо ---
