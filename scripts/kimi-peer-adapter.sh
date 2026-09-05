@@ -451,7 +451,7 @@ if [ "$KIMI_CLI_STYLE" = "prompt-arg" ]; then
   fi
   # $(cat) strips trailing newlines — harmless at the final CLI handoff (prompt semantics
   # unchanged); byte-exactness matters only inside the filter pipeline above.
-  KIMI_PROMPT_ARGS=("-p" "$(cat "$PROMPT_FILE")" "--print" "--output-format" "stream-json")
+  KIMI_PROMPT_ARGS=("-p" "$(cat "$PROMPT_FILE")" "--output-format" "stream-json")
 fi
 
 # OAuth-refresh lock: all Kimi processes on this machine share one token file
