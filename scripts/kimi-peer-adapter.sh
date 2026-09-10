@@ -30,6 +30,23 @@
 
 set -uo pipefail
 
+# Bound each peer turn; override for slower models without editing the adapter.
+KIMI_PEER_TIMEOUT_SECONDS="${KIMI_PEER_TIMEOUT_SECONDS:-360}"
+if ! [[ "$KIMI_PEER_TIMEOUT_SECONDS" =~ ^[1-9][0-9]{0,4}$ ]] ||
+   [ "$KIMI_PEER_TIMEOUT_SECONDS" -gt 86400 ]; then
+  echo "ERROR: KIMI_PEER_TIMEOUT_SECONDS must be an integer from 1 to 86400" >&2
+  exit 1
+fi
+export KIMI_PEER_TIMEOUT_SECONDS
+# Git Bash ships GNU timeout. Perl alarm does not survive exec reliably on Windows.
+if command -v timeout >/dev/null 2>&1 && timeout --version 2>/dev/null | grep -q 'GNU coreutils'; then
+  KIMI_TIMEOUT_CMD=(timeout --kill-after=10s "${KIMI_PEER_TIMEOUT_SECONDS}s")
+elif command -v gtimeout >/dev/null 2>&1; then
+  KIMI_TIMEOUT_CMD=(gtimeout --kill-after=10s "${KIMI_PEER_TIMEOUT_SECONDS}s")
+else
+  KIMI_TIMEOUT_CMD=(perl -e 'alarm $ENV{KIMI_PEER_TIMEOUT_SECONDS}; exec @ARGV' --)
+fi
+
 # Declared before cleanup_peer's trap is armed (below) so `set -u` can't fault
 # on an unset read if the script exits early, before the lock is ever attempted.
 OAUTH_LOCK_DIR="${IWE_PEER_LOCK_DIR:-/tmp/kimi-peer-locks}/kimi-oauth-refresh.lockdir"
@@ -400,7 +417,7 @@ cleanup_peer() {
 trap cleanup_peer EXIT INT TERM
 [ -x "$_IWE_ARS" ] && bash "$_IWE_ARS" --session-id "$KIMI_SESSION_ID" kimi peer-session "$KIMI_TASK" 2>/dev/null &
 
-# === Запуск Kimi с inline prompt + guard + 5min timeout (perl alarm) ===
+# === Запуск Kimi с inline prompt + guard + configurable timeout ===
 GUARD_BIN="${SCRIPT_DIR}/kimi-session-guard.sh"
 [ ! -x "$GUARD_BIN" ] && GUARD_BIN="${HOME}/.iwe/kimi-session-guard.sh"
 GUARD_ARGS=()
@@ -444,10 +461,10 @@ if [ "$KIMI_CLI_STYLE" = "prompt-arg" ]; then
   fi
   # -p mode cannot take --yolo/--auto; tool auto-approval relies on
   # default_permission_mode = "yolo" in config.toml. Without it a tool-using
-  # turn hangs until the 5min alarm — warn early so the cause is visible.
+  # turn hangs until the configured alarm — warn early so the cause is visible.
   if [ -f "$KIMI_CODE_CFG" ] && \
      ! grep -qE '^[[:space:]]*default_permission_mode[[:space:]]*=[[:space:]]*"(yolo|auto)"' "$KIMI_CODE_CFG"; then
-    echo "WARN: default_permission_mode is not 'yolo'/'auto' in kimi-code config — tool calls in -p mode may hang until the 5min timeout" >&2
+    echo "WARN: default_permission_mode is not 'yolo'/'auto' in kimi-code config — tool calls in -p mode may hang until the configured timeout" >&2
   fi
   # $(cat) strips trailing newlines — harmless at the final CLI handoff (prompt semantics
   # unchanged); byte-exactness matters only inside the filter pipeline above.
@@ -476,7 +493,7 @@ acquire_oauth_lock() {
       return 0
     fi
     # Stale-lock guard: liveness (kill -0 on the holder's PID), not age — a
-    # legitimate Kimi call can run up to 300s (perl alarm below), well past
+    # legitimate Kimi call can run up to KIMI_PEER_TIMEOUT_SECONDS (timeout below), well past
     # any fixed timeout, so a time-based guard would steal a live holder's
     # lock (found in cold review of peer-session
     # 2026-08-04-08-wp7-f44-sandbox-review, same pattern already used for
@@ -506,7 +523,7 @@ if [ "${IWE_PEER_INLINE:-0}" != "1" ]; then
 fi
 
 if [ "$KIMI_CLI_STYLE" = "prompt-arg" ]; then
-  KIMI_RAW=$(perl -e 'alarm 300; exec @ARGV' -- \
+  KIMI_RAW=$("${KIMI_TIMEOUT_CMD[@]}" \
     "${GUARD_ARGS[@]+"${GUARD_ARGS[@]}"}" "$KIMI_BIN" \
     "${KIMI_PROMPT_ARGS[@]}" \
     ${MODEL_ARG[@]+"${MODEL_ARG[@]}"} \
@@ -514,7 +531,7 @@ if [ "$KIMI_CLI_STYLE" = "prompt-arg" ]; then
     < /dev/null \
     2>"$KIMI_STDERR")
 else
-  KIMI_RAW=$(perl -e 'alarm 300; exec @ARGV' -- \
+  KIMI_RAW=$("${KIMI_TIMEOUT_CMD[@]}" \
     "${GUARD_ARGS[@]+"${GUARD_ARGS[@]}"}" "$KIMI_BIN" --quiet --yolo \
     ${MODEL_ARG[@]+"${MODEL_ARG[@]}"} \
     ${KIMI_DIR_ARGS[@]+"${KIMI_DIR_ARGS[@]}"} \
@@ -594,9 +611,9 @@ if [ "$PERL_EXIT" -eq 77 ]; then
 fi
 
 # Timeout guard
-if [ "$PERL_EXIT" -eq 142 ]; then
-  echo "ERROR: Kimi peer call timed out after 5 minutes (SIGALRM)" >&2
-  echo "KIMI_TIMEOUT: peer call exceeded 5min limit — check for Unicode issues or network problems" >&2
+if [ "$PERL_EXIT" -eq 124 ] || [ "$PERL_EXIT" -eq 137 ] || [ "$PERL_EXIT" -eq 142 ]; then
+  echo "ERROR: Kimi peer call timed out after ${KIMI_PEER_TIMEOUT_SECONDS}s" >&2
+  echo "KIMI_TIMEOUT: peer call exceeded ${KIMI_PEER_TIMEOUT_SECONDS}s limit — check for Unicode issues or network problems" >&2
   exit 1
 fi
 
