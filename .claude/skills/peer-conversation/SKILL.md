@@ -70,7 +70,16 @@ gates_rationale: "операционный скилл; WP Gate применим 
 
 **§0в.1 Общий контракт адаптера** (для добавления нового вендора): stdin = полный промпт хода (Bash pipe, не inline `echo` — inline попадает в командную строку и хук B7.7c может ложно заблокировать повторные вызовы); stdout = одна реплика с frontmatter; exit `0` = OK, `1` = general error, `2` = content-filter/PII violation, `3` = PII hard block, `5` = уже идёт сессия (pidfile lock). Для `claude` действует усиленный контракт WP-458: `--add-dir` запрещён, peer получает только минимальную текстовую проекцию в stdin и не имеет файловых или shell-инструментов. Коды 2-5 — не обязательны для нового адаптера, но `0`/`1` обязательны (Шаг 3.1/3р.1 проверяет `exit ≠ 0` как «напарник не ответил»).
 
-Построить для каждого `vendor` в `PEER_VENDORS`: `ADAPTER_PATH[$vendor]="$HOME/IWE/${IWE_GOVERNANCE_REPO:-DS-strategy}/<адаптер из таблицы>"` и `PEER_AGENT_ID[$vendor]="<peer_agent из таблицы>"` (bash associative arrays; порядок вызова = порядок `PEER_VENDORS`). Используются везде ниже вместо хардкода `kimi-peer-adapter.sh`/`kimi-headless`.
+Построить для каждого `vendor` в `PEER_VENDORS`: `PEER_AGENT_ID[$vendor]="<peer_agent из таблицы>"` и `ADAPTER_PATH[$vendor]` — **первый существующий** из двух путей (bash associative arrays; порядок вызова = порядок `PEER_VENDORS`):
+
+1. `${IWE_SCRIPTS:-${IWE_TEMPLATE:-$HOME/IWE/FMT-exocortex-template}/scripts}/<vendor>-peer-adapter.sh` — штатное место. `setup.sh` не копирует корневую `scripts/` в governance-репо, адаптеры живут внутри шаблона: та же причина и тот же фоллбэк, что уже применён для `session-guard.sh` на Шаге 1.0 (issue #266).
+2. `$HOME/IWE/${IWE_GOVERNANCE_REPO:-DS-strategy}/scripts/<vendor>-peer-adapter.sh` — установки, где адаптеры лежат в governance-репо.
+
+Ни один путь не существует → vendor недоступен (§0в.2 п. 2); сообщить пилоту **оба** проверенных пути, не один.
+
+> **Исправлено 2026-09-20** (пир-сессия `2026-09-20-01-wp003-eps-wording-review`): формула указывала только на governance-репо, где адаптеров нет ни на этой установке, ни у обычного пользователя шаблона — capability-check §0в.2 браковал всех вендоров подряд, и скилл был неработоспособен при любом `--peer`.
+
+Используются везде ниже вместо хардкода `kimi-peer-adapter.sh`/`kimi-headless`.
 
 **§0в.2 Проверка доступности vendor'ов (capability-check, WP-509 Ф5).** После построения `ADAPTER_PATH`, до анонса напарников:
 
